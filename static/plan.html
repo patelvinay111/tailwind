@@ -32,7 +32,8 @@
     .badge.confirmed { background: #16351f; color: var(--good); }
 
     /* Main layout */
-    .main { display: grid; grid-template-columns: 1fr; height: calc(100vh - 65px); max-width: 800px; margin: 0 auto; }
+    .main { display: grid; grid-template-columns: 1.2fr 0.8fr; height: calc(100vh - 65px); }
+    @media (max-width: 900px) { .main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
 
     /* Left: conversation */
     .left { display: flex; flex-direction: column; border-right: 1px solid var(--line); }
@@ -174,8 +175,57 @@
       <div class="hint" id="hint">Talk naturally — like calling a travel concierge</div>
     </div>
 
-    <!-- Right: removed - conversation only view -->
-    <div class="right" style="display:none;"></div>
+    <!-- Right: Traveler Persona -->
+    <div class="right">
+      <h2>Your Traveler Profile</h2>
+
+      <div class="pref-card" id="card-traveler">
+        <h3>👤 Traveler</h3>
+        <div class="pref-fields">
+          <div class="pref-field"><span class="label">Name</span><span class="value empty" id="val-traveler-name">—</span></div>
+          <div class="pref-field"><span class="label">Travelers</span><span class="value empty" id="val-traveler-number_of_travelers">—</span></div>
+          <div class="pref-field"><span class="label">Toddler</span><span class="value empty" id="val-traveler-has_toddler">—</span></div>
+          <div class="pref-field"><span class="label">Purpose</span><span class="value empty" id="val-traveler-trip_purpose">—</span></div>
+        </div>
+      </div>
+
+      <div class="pref-card" id="card-flight">
+        <h3>🛫 Flight</h3>
+        <div class="pref-fields">
+          <div class="pref-field"><span class="label">Stops</span><span class="value empty" id="val-flight-stops">—</span></div>
+          <div class="pref-field"><span class="label">Budget</span><span class="value empty" id="val-flight-max_budget">—</span></div>
+          <div class="pref-field"><span class="label">Time</span><span class="value empty" id="val-flight-preferred_time">—</span></div>
+          <div class="pref-field"><span class="label">Seat</span><span class="value empty" id="val-flight-seat_type">—</span></div>
+          <div class="pref-field"><span class="label">Class</span><span class="value empty" id="val-flight-cabin_class">—</span></div>
+          <div class="pref-field"><span class="label">Airline</span><span class="value empty" id="val-flight-airline_preference">—</span></div>
+          <div class="pref-field"><span class="label">Bassinet</span><span class="value empty" id="val-flight-needs_bassinet">—</span></div>
+        </div>
+      </div>
+
+      <div class="pref-card" id="card-hotel">
+        <h3>🏨 Hotel</h3>
+        <div class="pref-fields">
+          <div class="pref-field"><span class="label">Room</span><span class="value empty" id="val-hotel-room_type">—</span></div>
+          <div class="pref-field"><span class="label">Budget/Night</span><span class="value empty" id="val-hotel-max_budget_per_night">—</span></div>
+          <div class="pref-field"><span class="label">Stars</span><span class="value empty" id="val-hotel-star_rating">—</span></div>
+        </div>
+      </div>
+
+      <div class="pref-card" id="card-food">
+        <h3>🍽️ Food</h3>
+        <div class="pref-fields">
+          <div class="pref-field"><span class="label">Diet</span><span class="value empty" id="val-food-diet_type">—</span></div>
+          <div class="pref-field"><span class="label">Allergies</span><span class="value empty" id="val-food-allergies">—</span></div>
+        </div>
+      </div>
+
+      <div class="progress-section">
+        <div class="progress-bar"><div id="progressFill" class="progress-fill" style="width: 0%"></div></div>
+        <div class="progress-label"><span id="progressText">0%</span> complete</div>
+        <button id="confirmBtn" class="confirm-btn" onclick="confirmPreferences()" disabled>Save My Preferences</button>
+        <button class="reset-btn" onclick="resetAll()">Reset Profile</button>
+      </div>
+    </div>
   </div>
 
   <script type="module">
