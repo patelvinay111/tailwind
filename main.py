@@ -48,6 +48,11 @@ import rebooking
 rebooking.set_store(preference_store)
 app.include_router(rebooking.router)
 
+# MCP server — exposes our endpoints as MCP tools at /mcp/sse (for VB MCP mode).
+# Self-contained; does not alter existing routes or the agent.
+import mcp_server
+app.mount("/mcp", mcp_server.sse_app)
+
 # ---------------------------------------------------------------------------
 # In-memory demo state (single run; no DB by design).
 # state: idle -> calling -> awaiting_confirmation -> rebooking -> done | declined | error

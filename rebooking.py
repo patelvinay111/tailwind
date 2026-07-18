@@ -1,23 +1,29 @@
 """
-Rebooking flow (our scope) — cancellation trigger → outbound call → inform →
-PREFERENCE-AWARE Sabre search → present options → hand off to booking (team).
+Rebooking flow (our scope) — works on a full ITINERARY.
 
-Self-contained FastAPI APIRouter so it doesn't collide with the churning main.py.
-main.py only needs three lines:
+Flow:
+  1. cancellation-trigger : mark the itinerary's flight CANCELLED in OUR records
+     (data/itinerary.json), sanity-check the status, then place the outbound call.
+  2. context              : give the agent the COMPLETE itinerary (passenger, all
+     flights + statuses, which one was cancelled) so it has full context.
+  3. search-rebooking     : real Sabre search for the cancelled leg, ranked by the
+     traveler's voice-collected preferences (+ live overrides).
+  4. book                 : replace the cancelled leg with the chosen flight, mark
+     the itinerary 'rebooked' (HANDOFF seam to the team's real Create PNR).
 
+Data files (all JSON, git-checkinable):
+  config.json                 tunables (budget, options, time windows)
+  data/itinerary.sample.json  pristine SAMPLE itinerary (for testing / reset)
+  data/itinerary.json         the LIVE itinerary (updated as the flow runs)
+
+Self-contained APIRouter; main.py just does:
     import rebooking
-    rebooking.set_store(preference_store)     # share the voice-collected prefs
+    rebooking.set_store(preference_store)
     app.include_router(rebooking.router)
-
-The VB agent (Custom HTTP Tools) calls:
-    GET  /agent/context           -> get_cancellation_context (inform)
-    POST /agent/search-rebooking  -> search_rebooking_options (honors preferences)
-    POST /agent/book              -> book_selected_flight (HANDOFF to team's Create PNR)
-    POST /agent/cancellation-trigger -> place the outbound call (system-triggered)
-    GET  /agent/rebooking-status  -> UI polling
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import pathlib
@@ -33,12 +39,14 @@ import vocalbridge
 router = APIRouter()
 _lock = threading.Lock()
 
-# ---------------------------------------------------------------------------
-# Config — tunables in config.json; the cancellation SCENARIO in scenario.json.
-# Both are data files (not hardcoded); edit those, not this module.
-# ---------------------------------------------------------------------------
 _HERE = pathlib.Path(__file__).resolve().parent
+DATA_DIR = _HERE / "data"
+SAMPLE_FILE = DATA_DIR / "itinerary.sample.json"
+ITINERARY_FILE = DATA_DIR / "itinerary.json"
 
+# ---------------------------------------------------------------------------
+# Config (tunables) — config.json
+# ---------------------------------------------------------------------------
 _CONFIG_DEFAULTS = {
     "default_max_budget_usd": 1000,
     "max_options": 3,
@@ -48,33 +56,82 @@ _CONFIG_DEFAULTS = {
     },
 }
 
-_SCENARIO_DEFAULT = {
-    "flight_number": "B61234", "carrier": "JetBlue Airways",
-    "origin": "JFK", "destination": "LAX",
-    "depart": "2026-08-15T18:00:00", "arrive": "2026-08-15T21:20:00",
-    "stops": 0, "price": 329.00, "currency": "USD", "cabin": "Economy",
-    "status": "CANCELLED", "confirmation": "JB-7K2P9Q",
-}
 
-
-def _load_json(filename: str, fallback: dict) -> dict:
+def _load_json(path: pathlib.Path, fallback: dict) -> dict:
     try:
-        loaded = json.loads((_HERE / filename).read_text())
+        loaded = json.loads(path.read_text())
         return {k: v for k, v in loaded.items() if not k.startswith("_")}
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"[rebooking] {filename} not loaded ({e}); using defaults")
+        print(f"[rebooking] {path.name} not loaded ({e}); using defaults")
         return dict(fallback)
 
 
-_CFG = {**_CONFIG_DEFAULTS, **_load_json("config.json", _CONFIG_DEFAULTS)}
+_CFG = {**_CONFIG_DEFAULTS, **_load_json(_HERE / "config.json", _CONFIG_DEFAULTS)}
 DEFAULT_MAX_BUDGET = _CFG["default_max_budget_usd"]
 MAX_OPTIONS = _CFG["max_options"]
-
-_SCENARIO = _load_json("scenario.json", {"cancelled_flight": _SCENARIO_DEFAULT})
+_TIME_WINDOWS = {k: tuple(v) for k, v in _CFG["time_windows"].items()}
 
 # ---------------------------------------------------------------------------
-# Shared PreferenceStore (injected from main.py so we read the SAME prefs the
-# voice-collection endpoints write). Optional — falls back to no prefs.
+# Itinerary state — loaded from data/itinerary.json, seeded from the sample.
+# ---------------------------------------------------------------------------
+_SAMPLE_FALLBACK = {
+    "itinerary_id": "TW-DEMO-001",
+    "passenger": {"name": "Sam Traveler", "phone": "+19255686514"},
+    "confirmation": "JB-7K2P9Q",
+    "status": "confirmed",
+    "flights": [{
+        "flight_number": "B61234", "carrier": "JetBlue Airways",
+        "origin": "JFK", "destination": "LAX",
+        "depart": "2026-08-15T18:00:00", "arrive": "2026-08-15T21:20:00",
+        "stops": 0, "price": 329.00, "currency": "USD", "cabin": "Economy",
+        "status": "CONFIRMED",
+    }],
+    "rebooking": {"options": [], "selected": None},
+    "updated_at": None,
+}
+
+
+def _sample() -> dict:
+    return _load_json(SAMPLE_FILE, _SAMPLE_FALLBACK)
+
+
+_itin: dict = {}
+
+
+def _save_locked() -> None:
+    """Persist the live itinerary. Caller holds _lock."""
+    try:
+        DATA_DIR.mkdir(exist_ok=True)
+        _itin["updated_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+        ITINERARY_FILE.write_text(json.dumps(_itin, indent=2))
+    except OSError as e:
+        print(f"[rebooking] could not save itinerary: {e}")
+
+
+def _load_or_seed() -> None:
+    """Load the live itinerary, or seed it from the sample on first run."""
+    global _itin
+    try:
+        _itin = json.loads(ITINERARY_FILE.read_text())
+        if "flights" not in _itin:               # old/flat file → reseed
+            raise ValueError("stale shape")
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        _itin = _sample()
+        with _lock:
+            _save_locked()
+
+
+_load_or_seed()
+
+
+def _cancelled_flight() -> Optional[dict]:
+    """The CANCELLED leg (or the first flight if none is marked yet)."""
+    flights = _itin.get("flights") or []
+    return next((f for f in flights if f.get("status") == "CANCELLED"), flights[0] if flights else None)
+
+
+# ---------------------------------------------------------------------------
+# Preferences
 # ---------------------------------------------------------------------------
 _store = None
 
@@ -84,30 +141,11 @@ def set_store(store) -> None:
     _store = store
 
 
-# Staged cancelled flight (from scenario.json; the trigger can override it).
-DEFAULT_CANCELLED_FLIGHT = _SCENARIO["cancelled_flight"]
-
-_state = {"cancelled_flight": None, "options": [], "selected": None, "status": "idle"}
-
-
-def _set(**kw):
-    with _lock:
-        _state.update(kw)
-
-
-# ---------------------------------------------------------------------------
-# Preference handling
-# ---------------------------------------------------------------------------
 def _flight_prefs() -> dict:
-    """Voice-collected flight preferences (non-empty only)."""
     if _store is None:
         return {}
     prefs = (_store.get_all() or {}).get("preferences", {}).get("flight", {}) or {}
     return {k: v for k, v in prefs.items() if v not in (None, "", [])}
-
-
-# local departure-hour ranges (from config.json); red_eye wraps past midnight
-_TIME_WINDOWS = {k: tuple(v) for k, v in _CFG["time_windows"].items()}
 
 
 def _depart_hour(f: dict) -> int:
@@ -126,11 +164,6 @@ def _in_window(hour: int, key: str) -> bool:
 
 
 def _apply_preferences(candidates: list[dict], prefs: dict) -> tuple[list[dict], bool]:
-    """
-    HARD-filter by stops/budget, then rank by airline + preferred-time match,
-    then soonest arrival / fewest stops / price. Returns (ranked, relaxed) where
-    `relaxed` means the hard filters removed everything so we fell back to all.
-    """
     stops_pref = prefs.get("stops")
     budget = prefs.get("max_budget")
     airline = (prefs.get("airline_preference") or "").lower()
@@ -161,21 +194,6 @@ def _apply_preferences(candidates: list[dict], prefs: dict) -> tuple[list[dict],
     return sorted(pool, key=score), relaxed
 
 
-def _spoken_options(options: list[dict], prefs: dict, relaxed: bool) -> str:
-    top = options[0]
-    when = _friendly_time(top.get("depart", ""))
-    stops = "nonstop" if top.get("stops") == 0 else f"{top.get('stops')} stop"
-    line = (f"The best match is {top['carrier']} flight {top['flight_number']}, "
-            f"departing {when}, {stops}, ${top.get('price', 0):.0f}.")
-    if relaxed:
-        line += " I couldn't match all your preferences exactly, so this is the closest option."
-    if len(options) > 1:
-        line += " I have a couple of other options too. Want me to book this one?"
-    else:
-        line += " Want me to book it?"
-    return line
-
-
 def _friendly_time(iso: str) -> str:
     try:
         hh = int(iso.split("T")[1][:2]); mm = iso.split("T")[1][3:5]
@@ -185,104 +203,143 @@ def _friendly_time(iso: str) -> str:
         return "soon"
 
 
+def _spoken_options(options: list[dict], relaxed: bool) -> str:
+    top = options[0]
+    when = _friendly_time(top.get("depart", ""))
+    stops = "nonstop" if top.get("stops") == 0 else f"{top.get('stops')} stop"
+    line = (f"The best match is {top['carrier']} flight {top['flight_number']}, "
+            f"departing {when}, {stops}, ${top.get('price', 0):.0f}.")
+    if relaxed:
+        line += " I couldn't match all your preferences exactly, so this is the closest option."
+    line += " I have a couple of other options too. Want me to book this one?" if len(options) > 1 else " Want me to book it?"
+    return line
+
+
 # ---------------------------------------------------------------------------
 # Endpoints (VB Custom HTTP Tools)
 # ---------------------------------------------------------------------------
 class TriggerReq(BaseModel):
     phone_number: Optional[str] = None
-    flight: Optional[dict] = None
 
 
 @router.post("/agent/cancellation-trigger")
 async def cancellation_trigger(req: TriggerReq):
-    """Stage the cancellation and place the outbound call to the traveler."""
-    flight = req.flight or dict(DEFAULT_CANCELLED_FLIGHT)
-    _set(cancelled_flight=flight, options=[], selected=None, status="calling")
-    to = req.phone_number or os.getenv("DEMO_USER_PHONE", "")
-    call = vocalbridge.trigger_call(to_number=to, context={"flight_number": flight["flight_number"]})
-    _set(status="on_call")
-    return {"ok": True, "call": call, "cancelled_flight": flight}
+    """On a cancellation: FIRST get the trip on record, then mark it disrupted,
+    verify, and only then place the outbound call to that traveler."""
+    # 1. Get the trip details first — nothing to do if there's no trip on record.
+    with _lock:
+        trip = json.loads(json.dumps(_itin))
+    if not trip.get("flights"):
+        return {"ok": False, "error": "No trip on record to act on."}
+
+    # 2. Record the disruption (flight -> CANCELLED, itinerary -> disrupted).
+    with _lock:
+        for fl in _itin.get("flights", []):
+            fl["status"] = "CANCELLED"
+        _itin["status"] = "disrupted"
+        _itin["rebooking"] = {"options": [], "selected": None}
+        _save_locked()
+        trip = json.loads(json.dumps(_itin))
+    cancelled = next((f for f in trip["flights"] if f.get("status") == "CANCELLED"), None)
+    phone = (trip.get("passenger") or {}).get("phone")
+
+    # 3. Sanity-check OUR records before dialing.
+    if trip["status"] != "disrupted" or not cancelled:
+        return {"ok": False, "error": "Itinerary is not in a cancelled state; not calling."}
+
+    # 4. Call the traveler, using the number from the trip.
+    to = req.phone_number or phone or os.getenv("DEMO_USER_PHONE", "")
+    call = vocalbridge.trigger_call(to_number=to, context={"itinerary_id": trip.get("itinerary_id")})
+    return {"ok": True, "call": call, "trip": trip, "cancelled_flight": cancelled}
 
 
 @router.get("/agent/context")
 async def context():
-    """Tool: get_cancellation_context — what was cancelled, so the agent can inform."""
-    f = _state["cancelled_flight"] or dict(DEFAULT_CANCELLED_FLIGHT)
-    _set(cancelled_flight=f)
+    """Tool: get_cancellation_context — the COMPLETE itinerary + what was cancelled."""
+    with _lock:
+        itin = json.loads(json.dumps(_itin))   # deep copy
+    cancelled = next((f for f in itin.get("flights", []) if f.get("status") == "CANCELLED"), None)
+    pax = (itin.get("passenger") or {}).get("name", "the traveler")
+    if cancelled:
+        spoken = (f"{pax}, your {cancelled['carrier']} flight {cancelled['flight_number']} from "
+                  f"{cancelled['origin']} to {cancelled['destination']} was cancelled.")
+    else:
+        spoken = f"{pax}, your itinerary is confirmed — no cancellations."
     return {
-        "flight_number": f["flight_number"], "carrier": f["carrier"],
-        "origin": f["origin"], "destination": f["destination"], "depart": f["depart"],
-        "spoken": (f"Your {f['carrier']} flight {f['flight_number']} from "
-                   f"{f['origin']} to {f['destination']} was cancelled."),
+        "itinerary_id": itin.get("itinerary_id"),
+        "passenger": itin.get("passenger"),
+        "itinerary_status": itin.get("status"),
+        "flights": itin.get("flights"),
+        "cancelled_flight": cancelled,
+        "spoken": spoken,
     }
 
 
 class SearchReq(BaseModel):
-    # Live overrides captured from the conversation; anything omitted falls back
-    # to the voice-collected preferences.
     airline_preference: Optional[str] = None
-    stops: Optional[str] = None                # nonstop | 1_stop | any
-    preferred_time: Optional[str] = None       # early_morning|morning|afternoon|evening|red_eye
+    stops: Optional[str] = None
+    preferred_time: Optional[str] = None
     cabin_class: Optional[str] = None
     max_budget: Optional[float] = None
 
 
 @router.post("/agent/search-rebooking")
 async def search_rebooking(req: SearchReq):
-    """Tool: search_rebooking_options — real Sabre search, ranked by preferences."""
-    f = _state["cancelled_flight"] or dict(DEFAULT_CANCELLED_FLIGHT)
-    _set(cancelled_flight=f, status="searching")
+    """Tool: search_rebooking_options — real Sabre search for the cancelled leg."""
+    cancelled = _cancelled_flight()
+    if not cancelled:
+        return {"ok": False, "options": [], "spoken": "There's no cancelled flight to rebook."}
 
-    # Precedence: config default budget < saved profile < live conversation overrides.
     overrides = req.model_dump(exclude_none=True)
     prefs = {"max_budget": DEFAULT_MAX_BUDGET, **_flight_prefs(), **overrides}
 
     try:
-        candidates = sabre.search_flights(f)
+        candidates = sabre.search_flights(cancelled)
     except Exception as e:
         print(f"[rebooking] Sabre search failed: {e}")
         candidates = []
 
     ranked, relaxed = _apply_preferences(candidates, prefs) if candidates else ([], False)
     options = ranked[:MAX_OPTIONS]
-    _set(options=options, status="presented")
+    with _lock:
+        _itin.setdefault("rebooking", {})["options"] = options
+        _save_locked()
 
     if not options:
         return {"ok": False, "options": [],
                 "spoken": "I'm sorry, I couldn't find any alternative flights on that route right now."}
-
-    return {
-        "ok": True,
-        "options": options,
-        "applied_preferences": prefs,
-        "spoken": _spoken_options(options, prefs, relaxed),
-    }
+    return {"ok": True, "options": options, "applied_preferences": prefs,
+            "spoken": _spoken_options(options, relaxed)}
 
 
 class BookReq(BaseModel):
-    flight_number: Optional[str] = None   # which option; defaults to the top match
+    flight_number: Optional[str] = None
 
 
 @router.post("/agent/book")
 async def book(req: BookReq):
-    """
-    Tool: book_selected_flight. HANDOFF SEAM to the team's real Sabre Create PNR.
-    Until that's wired, returns a confirmation via sabre.book_flight (simulated
-    unless SABRE_BOOKING_ENABLED). Replace the marked block with the team's call.
-    """
-    opts = _state["options"]
-    chosen = next((o for o in opts if o.get("flight_number") == req.flight_number), None)
-    chosen = chosen or (opts[0] if opts else None)
+    """Tool: book_selected_flight. HANDOFF seam to the team's real Create PNR."""
+    with _lock:
+        opts = (_itin.get("rebooking") or {}).get("options") or []
+    chosen = next((o for o in opts if o.get("flight_number") == req.flight_number), None) or (opts[0] if opts else None)
     if not chosen:
         return {"ok": False, "spoken": "I don't have a flight selected to book yet — let me search first."}
 
-    _set(selected=chosen, status="booking")
-    # --- TODO(team): replace with the real Create PNR booking call ---
+    # --- TODO(team): replace with the real Sabre Create PNR booking call ---
     booking = sabre.book_flight(chosen)
-    # -----------------------------------------------------------------
-    _set(status="booked")
+    # -----------------------------------------------------------------------
+
+    new_seg = dict(chosen); new_seg["status"] = "CONFIRMED"
+    with _lock:
+        _itin["flights"] = [new_seg if f.get("status") == "CANCELLED" else f
+                            for f in _itin.get("flights", [])]
+        _itin["status"] = "rebooked"
+        _itin["confirmation"] = booking["pnr"]
+        _itin.setdefault("rebooking", {})["selected"] = chosen
+        _save_locked()
+
     return {
-        "ok": True, "confirmation": booking["pnr"], "flight": chosen,
+        "ok": True, "confirmation": booking["pnr"], "flight": new_seg,
         "spoken": (f"You're all set — rebooked on {chosen['carrier']} flight "
                    f"{chosen['flight_number']}, confirmation {booking['pnr']}."),
     }
@@ -290,6 +347,16 @@ async def book(req: BookReq):
 
 @router.get("/agent/rebooking-status")
 async def rebooking_status():
-    """For the web UI to poll the rebooking flow's progress."""
+    """Full live itinerary — for the web UI to poll."""
     with _lock:
-        return dict(_state)
+        return json.loads(json.dumps(_itin))
+
+
+@router.post("/agent/rebooking-reset")
+async def rebooking_reset():
+    """Restore the pristine SAMPLE itinerary (confirmed, not cancelled)."""
+    global _itin
+    with _lock:
+        _itin = _sample()
+        _save_locked()
+    return {"ok": True, "status": _itin.get("status")}

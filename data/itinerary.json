@@ -1,0 +1,29 @@
+{
+  "itinerary_id": "TW-DEMO-001",
+  "passenger": {
+    "name": "Sam Traveler",
+    "phone": "+19255686514"
+  },
+  "confirmation": "JB-7K2P9Q",
+  "status": "disrupted",
+  "flights": [
+    {
+      "flight_number": "B61234",
+      "carrier": "JetBlue Airways",
+      "origin": "JFK",
+      "destination": "LAX",
+      "depart": "2026-08-15T18:00:00",
+      "arrive": "2026-08-15T21:20:00",
+      "stops": 0,
+      "price": 329.0,
+      "currency": "USD",
+      "cabin": "Economy",
+      "status": "CANCELLED"
+    }
+  ],
+  "rebooking": {
+    "options": [],
+    "selected": null
+  },
+  "updated_at": "2026-07-18T14:30:30"
+}

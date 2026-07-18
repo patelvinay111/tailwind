@@ -1,0 +1,24 @@
+{
+  "_comment": "SAMPLE itinerary for testing. Pristine, committed. POST /agent/rebooking-reset restores this. Represents a CONFIRMED trip; the cancellation trigger flips the flight to CANCELLED and the itinerary to 'disrupted'. Route must have Sabre CERT inventory (JFK->LAX works).",
+  "itinerary_id": "TW-DEMO-001",
+  "passenger": { "name": "Sam Traveler", "phone": "+19255686514" },
+  "confirmation": "JB-7K2P9Q",
+  "status": "confirmed",
+  "flights": [
+    {
+      "flight_number": "B61234",
+      "carrier": "JetBlue Airways",
+      "origin": "JFK",
+      "destination": "LAX",
+      "depart": "2026-08-15T18:00:00",
+      "arrive": "2026-08-15T21:20:00",
+      "stops": 0,
+      "price": 329.00,
+      "currency": "USD",
+      "cabin": "Economy",
+      "status": "CONFIRMED"
+    }
+  ],
+  "rebooking": { "options": [], "selected": null },
+  "updated_at": null
+}
