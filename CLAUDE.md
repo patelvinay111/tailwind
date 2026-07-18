@@ -638,37 +638,121 @@ Exploratory/inspirational search across large date ranges and geographies. Find 
 
 ---
 
-## Vocal Bridge (Voice AI Layer)
+## Vocal Bridge (Voice AI Layer) — Full Developer Guide
 
-Vocal Bridge provides real-time voice AI agents over WebRTC with sub-second latency.
+Vocal Bridge provides voice AI agents that you can integrate into any application using WebRTC. Users can have real-time voice conversations with AI agents through web browsers, mobile apps, or any platform that supports WebRTC.
 
-### Core Concept
-1. Get an API key from the Vocal Bridge dashboard
-2. Your backend exchanges the API key for a LiveKit token
-3. The client connects via WebRTC — mic and agent audio are automatic
-4. Bidirectional communication happens over a data channel (client actions)
+- **Real-time Voice** — Sub-second latency voice AI using WebRTC
+- **Secure API Keys** — Production-ready authentication
+- **Multi-platform** — JavaScript, Python, React, Flutter, and more
+
+### Quick Start
+
+1. **Create an API Key** — Go to your agent's page, open Developer Mode, click "Create API Key"
+2. **Install the SDK** — `npm install @vocalbridgeai/sdk`
+3. **Connect:**
+```javascript
+import { VocalBridge } from '@vocalbridgeai/sdk';
+
+const vb = new VocalBridge({
+  auth: { tokenUrl: '/api/voice-token' },
+});
+
+vb.on('transcript', ({ role, text }) => {
+  console.log(`[${role}] ${text}`);
+});
+
+await vb.connect();
+// Agent audio plays automatically. Mic is live.
+```
+
+The SDK handles token exchange, WebRTC connections, audio playback, heartbeats, and transcript accumulation automatically.
 
 ### Authentication
+
+API keys start with `vb_` followed by a secure random string.
+
+**Security: Never expose your API key in client-side code. Always call the token endpoint from your backend.**
+
+```bash
+# Option 1: X-API-Key header (recommended)
+curl -H "X-API-Key: vb_your_api_key" http://vocalbridgeai.com/api/v1/token
+
+# Option 2: Authorization header
+curl -H "Authorization: Bearer vb_your_api_key" http://vocalbridgeai.com/api/v1/token
 ```
-API Key format: vb_<random_string>
 
-# Token endpoint
-POST https://vocalbridgeai.com/api/v1/token
-Headers:
-  X-API-Key: vb_your_api_key
-  Content-Type: application/json
-Body: { "participant_name": "User" }
-
-Response: { "livekit_url", "token", "room_name", "participant_identity", "expires_in", "agent_mode" }
+**Account-Level API Keys** work across all your agents — include `X-Agent-Id` header:
+```bash
+curl -H "X-API-Key: vb_your_account_key" \
+     -H "X-Agent-Id: your-agent-uuid" \
+     http://vocalbridgeai.com/api/v1/token
 ```
 
-**Security:** Never expose API keys client-side. Always proxy through your backend.
+**SDK Auth Strategies:**
+```javascript
+// 1. Token URL (production — recommended)
+{ auth: { tokenUrl: '/api/voice-token' } }
+
+// 2. API Key (prototyping only — exposes key to browser)
+{ auth: { apiKey: 'vb_xxx', agentId: 'your-agent-uuid' } }
+
+// 3. Custom provider (maximum flexibility)
+{ auth: { tokenProvider: async () => ({ url, token, room_name, ... }) } }
+```
+
+### API Reference
+
+#### POST /api/v1/token
+Generate a LiveKit access token for connecting to the agent.
+
+**Request Headers:**
+- `X-API-Key` — Your API key (required)
+- `X-Agent-Id` — Agent UUID (required for account-level API keys)
+- `Content-Type` — application/json
+
+**Request Body (optional):**
+- `participant_name` (string) — Display name (default: "API Client")
+- `session_id` (string) — Custom session ID (default: auto-generated)
+
+**Response:**
+```json
+{
+  "livekit_url": "wss://tutor-j7bhwjbm.livekit.cloud",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "room_name": "user-abc-agent-xyz-api-12345",
+  "participant_identity": "api-client-xxxx-12345",
+  "expires_in": 3600,
+  "agent_mode": "cascaded_concierge"
+}
+```
+
+#### GET /api/v1/agent
+Get information about the agent associated with your API key.
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "name": "My Voice Agent",
+  "mode": "cascaded_concierge",
+  "deployment_status": "active",
+  "phone_number": "+1234567890",
+  "greeting": "Hello! How can I help you?",
+  "background_enabled": true,
+  "hold_enabled": false,
+  "hangup_enabled": false,
+  "created_at": "2025-01-14T12:00:00Z"
+}
+```
 
 ### JavaScript SDK
+
 ```bash
 npm install @vocalbridgeai/sdk
 ```
 
+**Complete Example:**
 ```javascript
 import { VocalBridge } from '@vocalbridgeai/sdk';
 
@@ -678,28 +762,241 @@ const vb = new VocalBridge({
   debug: true,
 });
 
+// Connection state
 vb.on('connectionStateChanged', (state) => {
   // disconnected → connecting → waiting_for_agent → connected
 });
 
+// Live transcript (automatic — no setup needed)
 vb.on('transcript', ({ role, text }) => {
   console.log(`${role === 'user' ? 'You' : 'Agent'}: ${text}`);
 });
 
+// Custom agent actions
 vb.on('agentAction', ({ action, payload }) => {
-  // Handle custom actions from the agent
+  if (action === 'show_product') showProductModal(payload);
 });
 
+// Errors
+vb.on('error', (err) => {
+  console.error(err.code, err.message);
+});
+
+// Connect — mic and agent audio are handled automatically
 await vb.connect();
+
+// Send actions to the agent
+await vb.sendAction('user_clicked_buy', { productId: '123' });
+
+// Mute/unmute
+await vb.toggleMicrophone();
+
+// Disconnect
+await vb.disconnect();
 ```
 
-### React SDK
+**SDK Options:**
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `auth` | AuthConfig | required | Authentication strategy |
+| `participantName` | string | "User" | Display name |
+| `sessionId` | string | auto | Custom session ID |
+| `autoAckHeartbeat` | boolean | true | Auto-acknowledge agent heartbeats |
+| `autoPlayAudio` | boolean | true | Auto-play agent audio |
+| `maxReconnectAttempts` | number | 3 | Max reconnect retries |
+| `debug` | boolean | false | Console logging |
+
+**SDK Methods:**
+| Method | Description |
+|--------|-------------|
+| `connect()` | Connect to the voice agent |
+| `disconnect()` | Disconnect and clean up |
+| `setMicrophoneEnabled(enabled)` | Mute/unmute mic |
+| `toggleMicrophone()` | Toggle mic state |
+| `sendAction(action, payload?)` | Send custom action to agent |
+| `sendAIAgentResponse(turnId, response)` | Respond to AI agent query |
+| `onAIAgentQuery(handler)` | Register auto-response handler |
+| `clearTranscript()` | Clear accumulated transcript |
+| `on(event, handler)` | Subscribe to event |
+| `off(event, handler)` | Unsubscribe from event |
+
+**SDK Events:**
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `connectionStateChanged` | ConnectionState | State transition |
+| `transcript` | `{ role, text, timestamp }` | New transcript entry |
+| `agentAction` | `{ action, payload }` | Custom agent action |
+| `heartbeat` | `{ timestamp, agent_identity }` | Agent heartbeat |
+| `aiAgentQuery` | `{ query, turnId }` | AI agent query |
+| `microphoneChanged` | boolean | Mic state change |
+| `error` | VocalBridgeError | Error occurred |
+
+**SDK Error Codes:**
+| Code | When |
+|------|------|
+| `TOKEN_FETCH_FAILED` | Token request failed (network, 401, etc.) |
+| `CONNECTION_FAILED` | WebRTC connection failed |
+| `MICROPHONE_ERROR` | Mic access denied or unavailable |
+| `DATA_CHANNEL_ERROR` | Failed to send data to agent |
+| `RECONNECT_FAILED` | All reconnection attempts exhausted |
+| `USAGE_LIMIT_EXCEEDED` | 403 from token endpoint |
+| `AGENT_NOT_FOUND` | 404 — agent ID doesn't exist |
+| `AGENT_NOT_ACTIVE` | Agent exists but isn't active |
+
+### Backend Token Endpoint (Node.js/Express)
+```javascript
+const express = require('express');
+const app = express();
+
+const VOCAL_BRIDGE_API_KEY = process.env.VOCAL_BRIDGE_API_KEY;
+
+app.get('/api/voice-token', async (req, res) => {
+  try {
+    const response = await fetch('https://vocalbridgeai.com/api/v1/token', {
+      method: 'POST',
+      headers: {
+        'X-API-Key': VOCAL_BRIDGE_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        participant_name: req.user?.name || 'User'
+      })
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get voice token' });
+  }
+});
+
+app.listen(3000);
+```
+
+### Next.js API Route
+```typescript
+// app/api/voice-token/route.ts (Next.js App Router)
+import { NextRequest, NextResponse } from 'next/server';
+
+const VOCAL_BRIDGE_API_KEY = process.env.VOCAL_BRIDGE_API_KEY!;
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const response = await fetch('https://vocalbridgeai.com/api/v1/token', {
+      method: 'POST',
+      headers: {
+        'X-API-Key': VOCAL_BRIDGE_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        participant_name: body.participant_name || 'Web User',
+      }),
+    });
+    if (!response.ok) throw new Error('Failed to get token');
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to get voice token' }, { status: 500 });
+  }
+}
+```
+
+### Python SDK
+
+```bash
+pip install livekit requests
+```
+
+**Complete Example:**
+```python
+import asyncio
+import os
+import requests
+from livekit import rtc
+
+VOCAL_BRIDGE_API_KEY = os.environ.get('VOCAL_BRIDGE_API_KEY')
+VOCAL_BRIDGE_URL = 'http://vocalbridgeai.com'
+
+
+def get_voice_token(participant_name: str = 'Python Client'):
+    response = requests.post(
+        f'{VOCAL_BRIDGE_URL}/api/v1/token',
+        headers={
+            'X-API-Key': VOCAL_BRIDGE_API_KEY,
+            'Content-Type': 'application/json'
+        },
+        json={'participant_name': participant_name}
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+async def main():
+    token_data = get_voice_token()
+    room = rtc.Room()
+
+    @room.on("track_subscribed")
+    def on_track_subscribed(track, publication, participant):
+        if track.kind == rtc.TrackKind.KIND_AUDIO:
+            audio_stream = rtc.AudioStream(track)
+
+    @room.on("disconnected")
+    def on_disconnected():
+        print("Disconnected from room")
+
+    await room.connect(token_data['livekit_url'], token_data['token'])
+
+    source = rtc.AudioSource(sample_rate=48000, num_channels=1)
+    track = rtc.LocalAudioTrack.create_audio_track("microphone", source)
+    await room.local_participant.publish_track(track)
+
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        await room.disconnect()
+
+if __name__ == '__main__':
+    asyncio.run(main())
+```
+
+**Flask Backend Example:**
+```python
+from flask import Flask, jsonify
+import requests
+import os
+
+app = Flask(__name__)
+
+VOCAL_BRIDGE_API_KEY = os.environ.get('VOCAL_BRIDGE_API_KEY')
+VOCAL_BRIDGE_URL = 'http://vocalbridgeai.com'
+
+@app.route('/api/voice-token')
+def get_voice_token():
+    response = requests.post(
+        f'{VOCAL_BRIDGE_URL}/api/v1/token',
+        headers={
+            'X-API-Key': VOCAL_BRIDGE_API_KEY,
+            'Content-Type': 'application/json'
+        },
+        json={'participant_name': 'Web User'}
+    )
+    return jsonify(response.json())
+
+if __name__ == '__main__':
+    app.run(port=5000)
+```
+
+### React Integration
+
 ```bash
 npm install @vocalbridgeai/sdk @vocalbridgeai/react
 ```
 
+**Complete Example:**
 ```jsx
 import { VocalBridgeProvider, useVocalBridge, useTranscript, useAgentActions, useAIAgent } from '@vocalbridgeai/react';
+import { ConnectionState } from '@vocalbridgeai/sdk';
 
 function App() {
   return (
@@ -710,174 +1007,703 @@ function App() {
 }
 
 function VoiceChat() {
-  const { state, connect, disconnect, toggleMicrophone } = useVocalBridge();
+  const { state, connect, disconnect, isMicrophoneEnabled, toggleMicrophone, error } = useVocalBridge();
   const { transcript } = useTranscript();
+  const { onAction, sendAction } = useAgentActions();
+
+  useEffect(() => {
+    return onAction('show_product', (payload) => {
+      showProductModal(payload);
+    });
+  }, [onAction]);
 
   useAIAgent({
     onQuery: async (query) => {
-      // Forward to your AI agent that calls Sabre APIs
-      return await myTravelAgent.ask(query);
+      return await myAgent.ask(query);
     },
   });
 
-  // ... render UI
+  return (
+    <div>
+      <p>Status: {state}</p>
+      {error && <p style={{ color: 'red' }}>{error.message}</p>}
+      {state === ConnectionState.Disconnected ? (
+        <button onClick={connect}>Start Voice Chat</button>
+      ) : (
+        <>
+          <button onClick={disconnect}>End Call</button>
+          <button onClick={toggleMicrophone}>
+            {isMicrophoneEnabled ? 'Mute' : 'Unmute'}
+          </button>
+        </>
+      )}
+      {transcript.map((entry, i) => (
+        <p key={i}>
+          <strong>{entry.role === 'user' ? 'You' : 'Agent'}:</strong> {entry.text}
+        </p>
+      ))}
+    </div>
+  );
 }
 ```
 
-### Python SDK
+**React Hooks Reference:**
+
+`useVocalBridge()` — Primary hook for connection lifecycle, mic control, and sending actions:
+```javascript
+const {
+  state,                // ConnectionState
+  connect,              // () => Promise<void>
+  disconnect,           // () => Promise<void>
+  isMicrophoneEnabled,  // boolean
+  toggleMicrophone,     // () => Promise<void>
+  setMicrophoneEnabled, // (enabled: boolean) => Promise<void>
+  sendAction,           // (action: string, payload?: object) => Promise<void>
+  agentMode,            // string | undefined
+  error,                // VocalBridgeError | null
+  client,               // VocalBridge instance (advanced)
+} = useVocalBridge();
+```
+
+`useTranscript()` — Live conversation transcript:
+```javascript
+const { transcript, clear } = useTranscript();
+// transcript: Array<{ role: 'user' | 'agent', text: string, timestamp: number }>
+```
+
+`useAgentActions()` — Bidirectional custom actions:
+```javascript
+const { lastAction, sendAction, onAction } = useAgentActions();
+
+useEffect(() => {
+  return onAction('show_product', (payload) => {
+    setProduct(payload);
+  });
+}, [onAction]);
+
+sendAction('user_clicked_buy', { productId: '123' });
+```
+
+`useAIAgent()` — AI Agent integration:
+```javascript
+// Automatic (callback):
+useAIAgent({
+  onQuery: async (query) => {
+    return await myAgent.ask(query);
+  },
+});
+
+// Manual:
+const { pendingQuery, respond } = useAIAgent();
+useEffect(() => {
+  if (pendingQuery) {
+    myAgent.ask(pendingQuery.query).then(answer => {
+      respond(pendingQuery.turnId, answer);
+    });
+  }
+}, [pendingQuery]);
+```
+
+### Flutter SDK
+
+Add to `pubspec.yaml`:
+```yaml
+dependencies:
+  livekit_client: ^2.3.0
+  http: ^1.2.0
+```
+
+**Complete Example:**
+```dart
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:livekit_client/livekit_client.dart';
+
+class VoiceAgentService {
+  Room? _room;
+  EventsListener<RoomEvent>? _listener;
+
+  Future<Map<String, dynamic>> _getTokenFromBackend() async {
+    final response = await http.get(
+      Uri.parse('https://your-backend.com/api/voice-token'),
+    );
+    return jsonDecode(response.body);
+  }
+
+  Future<void> connect() async {
+    final tokenData = await _getTokenFromBackend();
+    final livekitUrl = tokenData['livekit_url'] as String;
+    final token = tokenData['token'] as String;
+
+    _room = Room();
+
+    _listener = _room!.createListener();
+    _listener!.on<TrackSubscribedEvent>((event) {
+      if (event.track.kind == TrackType.AUDIO) {
+        print('Agent audio track subscribed');
+      }
+    });
+
+    _listener!.on<RoomDisconnectedEvent>((event) {
+      print('Disconnected from room');
+    });
+
+    await _room!.connect(livekitUrl, token);
+    await _room!.localParticipant?.setMicrophoneEnabled(true);
+  }
+
+  Future<void> disconnect() async {
+    await _room?.disconnect();
+    _room = null;
+    _listener = null;
+  }
+
+  bool get isConnected => _room?.connectionState == ConnectionState.connected;
+}
+```
+
+**Handling Client Actions (Flutter):**
+```dart
+void _setupClientActionHandler() {
+  _listener!.on<DataReceivedEvent>((event) {
+    if (event.topic == 'client_actions') {
+      final data = jsonDecode(utf8.decode(event.data));
+      if (data['type'] == 'client_action') {
+        _handleAgentAction(data['action'], data['payload']);
+      }
+    }
+  });
+}
+
+Future<void> sendActionToAgent(String action, [Map<String, dynamic>? payload]) async {
+  final message = jsonEncode({
+    'type': 'client_action',
+    'action': action,
+    'payload': payload ?? {},
+  });
+  await _room?.localParticipant?.publishData(
+    utf8.encode(message),
+    reliable: true,
+    topic: 'client_actions',
+  );
+}
+```
+
+**Platform Setup:**
+
+iOS — Add to `ios/Runner/Info.plist`:
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>This app needs microphone access for voice chat</string>
+<key>UIBackgroundModes</key>
+<array><string>audio</string></array>
+```
+
+Android — Add to `AndroidManifest.xml`:
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO"/>
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+```
+
+### Client Actions
+
+Client Actions enable bidirectional communication between your voice agent and your client application via LiveKit's data channel.
+
+**Directions:**
+- **Agent to App:** The agent triggers actions in your client (navigate, show product card, update UI)
+- **App to Agent:** Your client sends events to the agent (user clicked button, form submitted)
+
+**Behavior (App to Agent):**
+- `respond` (default) — Agent generates a reply when this event arrives
+- `notify` — Event is silently added to conversation context; agent sees it on next turn but does not reply immediately
+
+```javascript
+// Receive actions from agent
+vb.on('agentAction', ({ action, payload }) => {
+  switch (action) {
+    case 'navigate': window.location.href = payload.url; break;
+    case 'show_product': showProductModal(payload.product_id); break;
+  }
+});
+
+// Send actions to agent
+await vb.sendAction('user_clicked_buy', { productId: '123', quantity: 2 });
+await vb.sendAction('practice_result', { score: 95, word: 'hello' });
+```
+
+**Configure via CLI:**
 ```bash
-pip install livekit requests
+vb config set --client-actions-file client_actions.json
+
+# Example client_actions.json:
+# [
+#   {"name": "show_product", "description": "Display a product card", "direction": "agent_to_app"},
+#   {"name": "user_clicked_buy", "description": "User clicked buy", "direction": "app_to_agent", "behavior": "respond"},
+#   {"name": "practice_result", "description": "Practice completed", "direction": "app_to_agent", "behavior": "notify"}
+# ]
 ```
 
-```python
-import requests
+### Live Transcript (Built-in)
 
-VOCAL_BRIDGE_API_KEY = os.environ.get('VOCAL_BRIDGE_API_KEY')
+All Vocal Bridge agents automatically send a `send_transcript` event whenever the user speaks or the agent responds. No setup required.
 
-def get_voice_token(participant_name='User'):
-    response = requests.post(
-        'https://vocalbridgeai.com/api/v1/token',
-        headers={'X-API-Key': VOCAL_BRIDGE_API_KEY, 'Content-Type': 'application/json'},
-        json={'participant_name': participant_name}
-    )
-    return response.json()
-```
-
-### Backend Token Endpoint (Node.js)
-```javascript
-// /api/voice-token
-app.get('/api/voice-token', async (req, res) => {
-  const response = await fetch('https://vocalbridgeai.com/api/v1/token', {
-    method: 'POST',
-    headers: {
-      'X-API-Key': process.env.VOCAL_BRIDGE_API_KEY,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ participant_name: 'User' })
-  });
-  res.json(await response.json());
-});
-```
-
-### Next.js API Route
-```typescript
-// app/api/voice-token/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-
-export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const response = await fetch('https://vocalbridgeai.com/api/v1/token', {
-    method: 'POST',
-    headers: {
-      'X-API-Key': process.env.VOCAL_BRIDGE_API_KEY!,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ participant_name: body.participant_name || 'Web User' }),
-  });
-  return NextResponse.json(await response.json());
+**Message Format:**
+```json
+{
+  "type": "client_action",
+  "action": "send_transcript",
+  "payload": {
+    "role": "user",
+    "text": "Hello, how are you?",
+    "timestamp": 1708123456789
+  }
 }
 ```
 
-### AI Agent Integration (Critical for this hackathon)
-
-The voice agent delegates domain questions to YOUR agent via data channel:
-
+**Using the SDK:**
 ```javascript
-// Voice agent sends query:
-{ "type": "client_action", "action": "query_agent", "payload": { "query": "...", "turn_id": "abc123" } }
-
-// Your agent responds:
-{ "type": "client_action", "action": "agent_response", "payload": { "response": "...", "turn_id": "abc123" } }
-```
-
-**SDK helper (automatic mode):**
-```javascript
-vb.onAIAgentQuery(async (query) => {
-  // Call Sabre APIs based on the query, return spoken response
-  return await travelAgent.process(query);
+vb.on('transcript', ({ role, text, timestamp }) => {
+  console.log(`${role === 'user' ? 'You' : 'Agent'}: ${text}`);
 });
+
+console.log(vb.transcript);  // Full conversation history
+vb.clearTranscript();
 ```
 
-### Client Actions (Bidirectional)
+**React:**
+```jsx
+const { transcript, clear } = useTranscript();
+return (
+  <div>
+    {transcript.map((entry, i) => (
+      <p key={i}>
+        <strong>{entry.role === 'user' ? 'You' : 'Agent'}:</strong> {entry.text}
+      </p>
+    ))}
+    <button onClick={clear}>Clear</button>
+  </div>
+);
+```
 
-Agent-to-App (show UI elements):
+### Listener Mode
+
+Listener mode is a passive-observer agent: it joins the room, transcribes multi-speaker audio with speaker diarization, and streams coaching suggestions via the data channel. It never speaks. Use for live coaching during investor calls, sales calls, interviews.
+
+Create with `vb agent create --style Listener` or pick "Listener" in the dashboard.
+
+**Three built-in actions:**
+
+**`live_transcript`** — Fires for interim and final transcript segments:
+```json
+{
+  "type": "client_action",
+  "action": "live_transcript",
+  "payload": {
+    "speaker_id": "S0",
+    "text": "...",
+    "is_final": true,
+    "timestamp": 1708123456789
+  }
+}
+```
+
+**`coaching_suggestion`** — Fires when the latest turn matches your coaching policy:
+```json
+{
+  "type": "client_action",
+  "action": "coaching_suggestion",
+  "payload": {
+    "speaker_id": "S0",
+    "question_text": "What was your Q3 margin?",
+    "guidance": "**Lead with:** Margins expanded 120bps YoY...",
+    "format": "markdown",
+    "timestamp": 1708123456789,
+    "job_id": "..."
+  }
+}
+```
+
+**`speaker_map_update`** — Periodic inferred mapping from speaker IDs to names/roles:
+```json
+{
+  "type": "client_action",
+  "action": "speaker_map_update",
+  "payload": {
+    "mapping": {
+      "S0": {"name": "Jane Doe", "org": "Morgan Stanley", "role": "analyst", "confidence": 0.9},
+      "S1": {"name": null, "org": null, "role": "executive", "confidence": 0.4}
+    },
+    "timestamp": 1708123456789
+  }
+}
+```
+
+**Subscribing (JavaScript SDK):**
 ```javascript
 vb.on('agentAction', ({ action, payload }) => {
-  if (action === 'show_flight_options') renderFlights(payload);
-  if (action === 'show_itinerary') renderItinerary(payload);
-  if (action === 'confirm_booking') showConfirmation(payload);
-});
-```
-
-App-to-Agent (user interactions):
-```javascript
-await vb.sendAction('flight_selected', { flightId: 'AA123', price: 450 });
-await vb.sendAction('confirm_booking', { itineraryId: 'trip-001' });
-```
-
-### CLI Tool
-```bash
-pip install vocal-bridge
-
-vb auth login vb_your_api_key
-vb agent                    # Show agent info
-vb agent create             # Create new agent
-vb config set --style Chatty
-vb config set --ai-agent-enabled true --ai-agent-description "Travel booking agent"
-vb prompt edit              # Edit system prompt
-vb debug                    # Stream real-time debug events
-vb logs                     # View call logs
-vb mcp test "book a flight" # Test without a call
-```
-
-### Custom HTTP API Tools
-
-Register Sabre APIs as tools the voice agent can call directly:
-```json
-[
-  {
-    "name": "search_flights",
-    "description": "Search for available flights between cities",
-    "method": "POST",
-    "url": "https://your-backend.com/api/sabre/flights",
-    "auth": { "type": "bearer", "credentials": { "token": "your-internal-key" } },
-    "parameters": [
-      { "name": "origin", "type": "string", "required": true, "location": "body" },
-      { "name": "destination", "type": "string", "required": true, "location": "body" },
-      { "name": "date", "type": "string", "required": true, "location": "body" }
-    ]
+  switch (action) {
+    case 'live_transcript': {
+      const { speaker_id, text, is_final } = payload;
+      if (is_final) appendFinal(speaker_id, text);
+      else updateInterim(text);
+      break;
+    }
+    case 'coaching_suggestion':
+      renderCoachingCard(payload);
+      break;
+    case 'speaker_map_update':
+      refreshSpeakerLabels(payload.mapping);
+      break;
   }
-]
+});
+await vb.connect();
 ```
 
-### MCP Integration
+**Listener Settings:**
+| Setting | Range | Default | What it does |
+|---------|-------|---------|--------------|
+| `coaching.coachee_description` | text, ≤500 chars | empty | Names the person being coached |
+| `coaching.debounce_seconds` | 0–60 | 12 | Min seconds between coaching cards |
+| `coaching.context_turns` | 0–50 | 10 | Recent turns considered per card |
+| `coaching.job_timeout_seconds` | 5–120 | 30 | Max seconds per card |
+| `coaching.gate_enabled` | true/false | true | Only coach when trigger conditions match |
+| `speaker_map.enabled` | true/false | true | Identify who's speaking |
+| `speaker_map.update_interval_seconds` | 5–300 | 20 | How often to re-check identities |
 
-Connect MCP servers for extended capabilities:
+```bash
+vb config set --coachee-description "the CFO during earnings Q&A" \
+              --coaching-debounce 8 \
+              --coaching-gate true
+```
+
+### MCP Tools
+
+The Model Context Protocol (MCP) allows your voice agent to connect to external tools and services.
+
+**Quick Setup with Zapier:**
+1. Go to zapier.com/mcp
+2. Configure the apps to connect
+3. Copy your MCP server URL
+4. Paste into your agent's MCP Server URL field
+
+**Custom MCP Server:** Build your own using the MCP specification. Must support Streamable HTTP transport.
+
 ```bash
 vb config set --mcp-servers-file servers.json
 ```
 
-### Post-Processing (After calls)
+### Native Connectors
 
-Automatically summarize calls, extract bookings, send confirmations:
+Platform-managed OAuth connectors — no MCP server to host, no API keys to manage.
+
+**Available Connectors:**
+- Google Calendar — read and create calendar events
+- Gmail — send email and create drafts
+- Linear — create, search, and update issues
+
 ```bash
-vb config set --post-processing-prompt "Extract all bookings from the call and send confirmation emails"
+vb connectors list
+vb connectors connect google_calendar
+vb config get connectors > connectors.json
+vb config set --connectors-file connectors.json --merge
+```
+
+### Custom HTTP API Tools
+
+Let your agent call external REST APIs during conversations.
+
+**Supported:** GET, POST, PUT, DELETE, PATCH
+**Auth Types:** Bearer token, Basic auth, Custom header, Query parameter, None
+**Reliability:** Configurable timeout (1-300s) and retry count (0-5)
+
+```json
+[
+  {
+    "id": "1",
+    "name": "get_weather",
+    "description": "Get the current weather for a city",
+    "method": "GET",
+    "url": "https://api.weather.com/v1/current",
+    "auth": {
+      "type": "bearer",
+      "credentials": { "token": "your-api-key" }
+    },
+    "parameters": [
+      {
+        "name": "city",
+        "type": "string",
+        "description": "City name",
+        "required": true,
+        "location": "query"
+      }
+    ],
+    "timeout": 30,
+    "max_retries": 2,
+    "enabled": true
+  }
+]
+```
+
+**Auth type reference:**
+| Type | Credentials | Behavior |
+|------|------------|----------|
+| `bearer` | `{"token": "sk-xxx"}` | Authorization: Bearer sk-xxx |
+| `basic` | `{"username": "u", "password": "p"}` | Base64-encoded Basic auth |
+| `header` | `{"header_name": "X-Key", "header_value": "val"}` | Custom HTTP header |
+| `query` | `{"param_name": "key", "param_value": "val"}` | Query parameter |
+| `none` | N/A | No authentication |
+
+```bash
+vb config set --api-tools-file api_tools.json
+```
+
+**Limits:** Max 20 tools per agent. URLs must use HTTPS. Credentials encrypted at rest.
+
+### Post-Processing
+
+Runs automatically after each call ends. Summarize conversations, update CRM, send follow-ups, create tickets.
+
+**Configuration:**
+- **Post-Processing Prompt** — Tell the LLM what to do with the transcript
+- **Post-Processing MCP Server** — Optional separate MCP server for post-call actions
+- **Model:** `auto` (default), `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+
+```bash
+vb config set --post-processing-prompt "Summarize the call and extract action items"
+vb config set --post-processing-mcp-url "https://your-mcp-server.com/..."
 vb config set --post-processing-model gemini-2.5-flash
 ```
 
-### Environment Variables
-```bash
-VOCALBRIDGE_API_KEY=vb_<your_key>
-VOCALBRIDGE_BASE_URL=https://api.vocalbridge.ai
-VOCALBRIDGE_AGENT_ID=<from dashboard>
-DEMO_USER_PHONE=+15551234567              # E.164 format
-PUBLIC_BASE_URL=https://your.ngrok.app    # for webhook delivery
+**Test:** `vb post-processing test [transcript]`
+
+### AI Agents
+
+Connect your existing AI agent to a Vocal Bridge voice agent. The voice agent handles conversation flow, greetings, and filler while delegating domain-specific questions to your agent.
+
+**How It Works:**
+1. User asks a domain-specific question
+2. Voice agent sends `query_agent` via data channel
+3. Your app forwards to your AI agent
+4. Your app sends response back via `agent_response`
+5. Voice agent speaks the response
+
+**Data Channel Protocol:**
+```json
+// Query from voice agent:
+{ "type": "client_action", "action": "query_agent", "payload": { "query": "What appointments do I have?", "turn_id": "abc123" } }
+
+// Response from your agent:
+{ "type": "client_action", "action": "agent_response", "payload": { "response": "You have a dentist at 10am.", "turn_id": "abc123" } }
 ```
 
-### Already-Implemented (in vocalbridge.py)
-- **Outbound call:** `POST {VB_BASE_URL}/v1/calls` with `agent_id`, `to`, `first_message`, `webhook_url`
-- **Webhook parsing:** normalizes events into `{type, role, text, call_id}`
-- **Webhook types:** `transcript` (user/agent speech), `call_ended`
+**SDK (Automatic mode):**
+```javascript
+vb.onAIAgentQuery(async (query) => {
+  const response = await myAgent.ask(query);
+  return response;
+});
+await vb.connect();
+```
+
+**SDK (Manual mode):**
+```javascript
+vb.on('aiAgentQuery', async ({ query, turnId }) => {
+  const answer = await myAgent.ask(query);
+  vb.sendAIAgentResponse(turnId, answer);
+});
+```
+
+**Configuration:**
+```json
+{
+  "enabled": true,
+  "description": "Customer support agent for Acme Corp",
+  "verbatim": false
+}
+```
+- `enabled` — Whether AI Agent integration is active
+- `description` — What your agent does (max 2000 chars). Guides voice agent on when to delegate
+- `verbatim` — If true, speaks responses exactly. If false (default), adapts for natural voice
+
+```bash
+vb config set --ai-agent-enabled true --ai-agent-description "Travel booking agent"
+```
+
+**Notes:** Timeout is 60 seconds. Works with web deploy targets only (requires data channel).
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| 403 Forbidden | API key invalid or revoked. Check dashboard |
+| No audio from agent | Ensure `autoPlayAudio` not false. Call `connect()` from user gesture |
+| Microphone not working | Browser needs permission. Listen for `MICROPHONE_ERROR` |
+| Token expired | Tokens valid 1 hour. Call `disconnect()` then `connect()` for fresh token |
+| CORS errors | Don't call API from browser. Use `tokenUrl` with backend endpoint |
+
+### CLI
+
+```bash
+pip install vocal-bridge
+```
+
+**Authentication:**
+```bash
+vb auth login                      # Interactive
+vb auth login vb_your_api_key      # Direct
+vb agent use                       # Select agent (for account keys)
+vb auth status                     # Check status
+```
+
+**Commands:**
+| Command | Description |
+|---------|-------------|
+| `vb agent` | Show current agent info |
+| `vb agent list` | List all agents |
+| `vb agent use` | Select an agent |
+| `vb agent create` | Create and deploy a new agent (paid plans only) |
+| `vb logs` | List recent call logs |
+| `vb logs show <id>` | View call details and transcript |
+| `vb logs download <id>` | Download call recording |
+| `vb stats` | Show call statistics |
+| `vb prompt show` | View current prompt and greeting |
+| `vb prompt edit` | Edit prompt in $EDITOR |
+| `vb prompt set --file` | Set prompt from file or stdin |
+| `vb config show` | View all agent settings |
+| `vb config get <section>` | Export a config section as JSON |
+| `vb config edit` | Edit full config in $EDITOR (JSON) |
+| `vb config set` | Update individual settings |
+| `vb config options` | Discover valid values for settings |
+| `vb mcp test <query>` | Test background AI and MCP/API tools |
+| `vb post-processing test` | Run post-call processing against a transcript |
+| `vb connectors list` | List native connectors |
+| `vb connectors connect <key>` | Connect a connector via OAuth |
+| `vb call <phone>` | Place an outbound call (paid plans only) |
+| `vb eval <session_id>` | Evaluate a call recording (paid plans, 100/day) |
+| `vb debug` | Stream real-time debug events |
+| `vb docs` | Get developer integration docs |
+
+**Update Settings:**
+```bash
+vb config set --style Chatty
+vb config set --debug-mode true
+vb config set --hold-enabled true
+vb config set --max-call-duration 15
+vb config set --max-history-messages 50
+vb config set --background-model auto  # auto | claude-haiku-4-5 | claude-sonnet-4-6
+vb config set --continuous-mode true
+vb config set --continuous-mode true --continuous-mode-delay 3
+vb config set --outbound-wait-for-user true
+```
+
+**Continuous mode:** Agent keeps talking on its own after a short silence — great for tutors, narrators, guided experiences. User can always interrupt by speaking. With continuous mode off (default), agent takes turns normally.
+
+**Evaluate a Call:**
+```bash
+vb eval <session_id>
+vb eval <session_id> --objective "Schedule an interview for next Tuesday"
+vb eval <session_id> --objective "Confirm availability" --scenario "User is busy and tries to reschedule twice"
+vb eval <session_id> --json
+```
+
+**Environment Variables:**
+```bash
+export VOCAL_BRIDGE_API_KEY=vb_your_api_key_here
+export VOCAL_BRIDGE_API_URL=https://vocalbridgeai.com  # optional
+```
+
+### Claude Code Plugin
+
+Install the plugin for native slash commands:
+```bash
+/plugin marketplace add vocalbridgeai/vocal-bridge-marketplace
+/plugin install vocal-bridge@vocal-bridge
+```
+
+**Getting Started:**
+```bash
+/vocal-bridge:login vb_your_api_key_here
+```
+
+**Available Commands:**
+| Command | Description |
+|---------|-------------|
+| `/vocal-bridge:login` | Authenticate with your API key |
+| `/vocal-bridge:status` | Check authentication status |
+| `/vocal-bridge:agent` | Show agent information |
+| `/vocal-bridge:create` | Create and deploy a new agent |
+| `/vocal-bridge:logs` | View call logs and transcripts |
+| `/vocal-bridge:download` | Download call recording |
+| `/vocal-bridge:stats` | Show call statistics |
+| `/vocal-bridge:prompt` | View or update system prompt |
+| `/vocal-bridge:config` | View and update agent configuration |
+| `/vocal-bridge:eval <session_id>` | Evaluate a call recording |
+| `/vocal-bridge:debug` | Stream real-time debug events |
+| `/vocal-bridge:help` | Show all available commands |
+
+### Advanced: Direct WebRTC Integration
+
+For lower-level control, use the LiveKit SDK directly:
+
+```javascript
+import { Room, RoomEvent, Track } from 'livekit-client';
+
+const room = new Room();
+
+room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+  if (track.kind === Track.Kind.Audio) {
+    const audioElement = track.attach();
+    document.body.appendChild(audioElement);
+  }
+});
+
+const response = await fetch('/api/voice-token');
+const { url, token } = await response.json();
+
+await room.connect(url, token);
+await room.localParticipant.setMicrophoneEnabled(true);
+
+// Handle data channel messages
+room.on(RoomEvent.DataReceived, (payload, participant, kind, topic) => {
+  if (topic === 'client_actions') {
+    const data = JSON.parse(new TextDecoder().decode(payload));
+    if (data.type === 'client_action') {
+      console.log('Action:', data.action, data.payload);
+    }
+  }
+});
+
+// Send actions
+room.localParticipant.publishData(
+  new TextEncoder().encode(JSON.stringify({
+    type: 'client_action',
+    action: 'user_clicked_buy',
+    payload: { productId: '123' }
+  })),
+  { reliable: true, topic: 'client_actions' }
+);
+
+await room.disconnect();
+```
+
+**Data Channel Protocol — all messages use topic `client_actions`:**
+```json
+{ "type": "client_action", "action": "action_name", "payload": { ... } }
+```
+
+**Built-in actions:**
+- `heartbeat` / `heartbeat_ack` — Agent keepalive
+- `send_transcript` — Transcript entry `{ role, text, timestamp }`
+- `query_agent` / `agent_response` — AI Agent query/response
+- `stop_talking` / `start_talking` — Mute/un-mute the agent on demand
+
+**Dependencies:**
+```bash
+npm install livekit-client          # JavaScript
+pip install livekit requests        # Python
+# Flutter: livekit_client: ^2.3.0, http: ^1.2.0
+```
 
 ---
 
@@ -920,18 +1746,22 @@ Flask/FastAPI + LiveKit Python SDK + Sabre APIs
 | `transcript` | `{ role, text, timestamp }` | Live conversation display |
 | `agentAction` | `{ action, payload }` | Agent-driven UI updates |
 | `aiAgentQuery` | `{ query, turnId }` | Delegating to your AI |
+| `heartbeat` | `{ timestamp, agent_identity }` | Agent keepalive |
+| `microphoneChanged` | boolean | Mic state change |
 | `error` | VocalBridgeError | Error handling |
 
 ## Error Codes
 
-| Code | Meaning |
-|------|---------|
-| `TOKEN_FETCH_FAILED` | Token request failed |
+| Code | When |
+|------|------|
+| `TOKEN_FETCH_FAILED` | Token request failed (network, 401, etc.) |
 | `CONNECTION_FAILED` | WebRTC connection failed |
-| `MICROPHONE_ERROR` | Mic access denied |
+| `MICROPHONE_ERROR` | Mic access denied or unavailable |
+| `DATA_CHANNEL_ERROR` | Failed to send data to agent |
+| `RECONNECT_FAILED` | All reconnection attempts exhausted |
 | `USAGE_LIMIT_EXCEEDED` | 403 from token endpoint |
-| `AGENT_NOT_FOUND` | Agent ID doesn't exist |
-| `AGENT_NOT_ACTIVE` | Agent exists but isn't running |
+| `AGENT_NOT_FOUND` | 404 — agent ID doesn't exist |
+| `AGENT_NOT_ACTIVE` | Agent exists but isn't active |
 
 ---
 

@@ -1,0 +1,27 @@
+[
+  {
+    "name": "update_preference",
+    "description": "Update a single travel preference field. Emitted each time the agent confirms a preference from the user's speech.",
+    "direction": "agent_to_app"
+  },
+  {
+    "name": "recommendations_ready",
+    "description": "Agent has collected minimum required preferences (origin, destination, date, travelers). Signals UI to enable the confirm button.",
+    "direction": "agent_to_app"
+  },
+  {
+    "name": "preferences_complete",
+    "description": "User has confirmed all preferences and is ready to search. Signals handoff to booking flow.",
+    "direction": "agent_to_app"
+  },
+  {
+    "name": "recommendations_invalidated",
+    "description": "A preference changed after recommendations were ready. Previous state is stale.",
+    "direction": "agent_to_app"
+  },
+  {
+    "name": "clear_preferences",
+    "description": "User wants to start over from scratch. Reset all collected preferences.",
+    "direction": "agent_to_app"
+  }
+]

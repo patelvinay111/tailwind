@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tailwind AI — Plan Your Trip</title>
+  <style>
+    :root {
+      --bg: #0b1020; --card: #151c31; --line: #263153; --text: #e8ecf6;
+      --muted: #97a2c0; --accent: #5b8cff; --good: #35c77f; --bad: #ff6b6b;
+      --warn: #ffcc66; --change: #a78bfa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      padding: 20px 32px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 16px;
+    }
+    .header h1 { font-size: 22px; }
+    .header .badge {
+      font-size: 11px; padding: 4px 10px; border-radius: 999px;
+      text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700;
+    }
+    .badge.empty { background: #232a44; color: var(--muted); }
+    .badge.collecting { background: #2a3358; color: var(--warn); }
+    .badge.recommendations_ready { background: #16351f; color: var(--good); }
+    .badge.confirmed { background: #16351f; color: var(--good); }
+
+    /* Main layout */
+    .main { display: grid; grid-template-columns: 1.2fr 0.8fr; height: calc(100vh - 65px); }
+    @media (max-width: 900px) { .main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
+
+    /* Left: conversation */
+    .left { display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+
+    /* Agent avatar + status */
+    .agent-bar {
+      padding: 16px 24px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 14px;
+    }
+    .avatar {
+      width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #5b8cff, #35c77f);
+      display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
+    }
+    .agent-info { flex: 1; }
+    .agent-name { font-weight: 700; font-size: 15px; }
+    .agent-status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .status-dot.online { background: var(--good); animation: pulse 2s infinite; }
+    .status-dot.speaking { background: var(--accent); animation: pulse 0.8s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* Transcript / chat */
+    .chat {
+      flex: 1; overflow-y: auto; padding: 20px 24px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .msg {
+      max-width: 80%; padding: 12px 16px; border-radius: 16px; font-size: 14px;
+      line-height: 1.5; animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .msg.agent {
+      background: var(--card); border: 1px solid var(--line); align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .msg.user {
+      background: var(--accent); color: white; align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .msg .name { font-size: 11px; font-weight: 700; margin-bottom: 4px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.04em; }
+    .msg.agent .name { color: var(--good); }
+    .msg.user .name { color: rgba(255,255,255,0.7); }
+    .typing { display: flex; gap: 4px; padding: 12px 16px; align-self: flex-start; }
+    .typing span { width: 8px; height: 8px; background: var(--muted); border-radius: 50%; animation: bounce 1.4s infinite; }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+
+    /* Voice controls */
+    .controls {
+      padding: 16px 24px; border-top: 1px solid var(--line);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .btn {
+      border: none; border-radius: 12px; padding: 14px 24px; font-size: 14px;
+      font-weight: 600; cursor: pointer; transition: all .15s;
+    }
+    .btn:hover { transform: scale(1.02); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-call { background: var(--good); color: #0b1020; flex: 1; font-size: 15px; }
+    .btn-call.active { background: var(--bad); color: white; }
+    .btn-mic {
+      width: 48px; height: 48px; border-radius: 50%; padding: 0;
+      background: #2a3358; color: var(--text); display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+    .btn-mic.muted { background: var(--bad); color: white; }
+    .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 4px; }
+
+    /* Right: preferences */
+    .right { overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .right h2 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .pref-card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+      padding: 14px 18px; transition: all 0.3s;
+    }
+    .pref-card.has-data { border-color: #2a4a3a; }
+    .pref-card.just-updated { border-color: var(--good); box-shadow: 0 0 16px rgba(53, 199, 127, 0.2); }
+
+    .pref-card h3 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .pref-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+    .pref-field { display: flex; flex-direction: column; gap: 1px; }
+    .pref-field .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .pref-field .value { font-size: 13px; font-weight: 500; min-height: 18px; }
+    .pref-field .value.empty { color: #3a4060; font-style: italic; font-weight: 400; }
+    .pref-field .value.highlight { color: var(--good); font-weight: 700; }
+
+    .progress-section { margin-top: auto; padding-top: 12px; }
+    .progress-bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--good)); transition: width 0.4s; border-radius: 3px; }
+    .progress-label { font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+    .confirm-btn {
+      margin-top: 10px; width: 100%; padding: 13px; font-size: 14px;
+      background: var(--good); color: #0b1020; border: none; border-radius: 10px;
+      font-weight: 700; cursor: pointer;
+    }
+    .confirm-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .reset-btn {
+      margin-top: 6px; width: 100%; padding: 8px; font-size: 12px;
+      background: none; color: var(--muted); border: 1px solid var(--line); border-radius: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>✈️ Tailwind AI</h1>
+    <span id="statusBadge" class="badge empty">ready</span>
+  </div>
+
+  <div class="main">
+    <!-- Left: Conversation -->
+    <div class="left">
+      <div class="agent-bar">
+        <div class="avatar">✈️</div>
+        <div class="agent-info">
+          <div class="agent-name">Tailwind</div>
+          <div class="agent-status">
+            <span id="statusDot" class="status-dot"></span>
+            <span id="statusText">Offline — press Call to connect</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="chat" class="chat">
+        <!-- Messages appear here -->
+      </div>
+
+      <div class="controls">
+        <button id="micBtn" class="btn btn-mic" onclick="toggleMute()" disabled title="Toggle microphone">🎤</button>
+        <button id="callBtn" class="btn btn-call" onclick="toggleConnection()">🎙️ Start Conversation</button>
+      </div>
+      <div class="hint" id="hint">Talk naturally — like calling a travel concierge</div>
+    </div>
+
+    <!-- Right: Live Preferences -->
+    <div class="right">
+      <h2>Your Trip Preferences</h2>
+
+      <div class="pref-card" id="card-trip">
+        <h3>✈️ Trip</h3>
+        <div class="pref-fields">
+          <div class="pref-field"><span class="label">From</span><span class="value empty" id="val-trip-origin">—</span></div>
+          <div class="pref-field"><span class="label">To</span><span class="value empty" id="val-trip-destination">—</span></div>
+          <div class="pref-field"><span class="label">Depart</span><span class="value empty" id="val-trip-departure_date">—</span></div>
+          <div class="pref-field"><span class="label">Return</span><span class="value empty" id="val-trip-return_date">—</span></div>
+          <div class="pref-field"><span class="label">Type</span><span class="value empty" id="val-trip-trip_type">—</span></div>
+          <div class="pref-field"><span class="label">Travelers</span><span class="value empty" id="val-trip-number_of_travelers">—</span></div>
+          <div class="pref-field"><span class="label">Toddler</span><span class="value empty" id="val-trip-has_toddler">—</span></div>
+          <div class="pref-field"><span class="label">Purpose</span><span class="value empty" id="val-trip-trip_purpose">—</span></div>
+        </div>
+      </div>
+
+      <div class="pref-card" id="card-flight">
+        <h3>🛫 Flight</h3>
+        <div class="pref-fields">
+          <div class="pref-field"><span class="label">Stops</span><span class="value empty" id="val-flight-stops">—</span></div>
+          <div class="pref-field"><span class="label">Budget</span><span class="value empty" id="val-flight-max_budget">—</span></div>
+          <div class="pref-field"><span class="label">Time</span><span class="value empty" id="val-flight-preferred_time">—</span></div>
+          <div class="pref-field"><span class="label">Seat</span><span class="value empty" id="val-flight-seat_type">—</span></div>
+          <div class="pref-field"><span class="label">Class</span><span class="value empty" id="val-flight-cabin_class">—</span></div>
+          <div class="pref-field"><span class="label">Airline</span><span class="value empty" id="val-flight-airline_preference">—</span></div>
+          <div class="pref-field"><span class="label">Bassinet</span><span class="value empty" id="val-flight-needs_bassinet">—</span></div>
+        </div>
+      </div>
+
+      <div class="pref-card" id="card-hotel">
+        <h3>🏨 Hotel</h3>
+        <div class="pref-fields">
+          <div class="pref-field"><span class="label">Room</span><span class="value empty" id="val-hotel-room_type">—</span></div>
+          <div class="pref-field"><span class="label">Budget/Night</span><span class="value empty" id="val-hotel-max_budget_per_night">—</span></div>
+          <div class="pref-field"><span class="label">Stars</span><span class="value empty" id="val-hotel-star_rating">—</span></div>
+          <div class="pref-field"><span class="label">Amenities</span><span class="value empty" id="val-hotel-amenities">—</span></div>
+          <div class="pref-field"><span class="label">Location</span><span class="value empty" id="val-hotel-location_preference">—</span></div>
+          <div class="pref-field"><span class="label">Crib Needed</span><span class="value empty" id="val-hotel-needs_crib">—</span></div>
+        </div>
+      </div>
+
+      <div class="pref-card" id="card-food">
+        <h3>🍽️ Food</h3>
+        <div class="pref-fields">
+          <div class="pref-field"><span class="label">Diet</span><span class="value empty" id="val-food-diet_type">—</span></div>
+          <div class="pref-field"><span class="label">Cuisine</span><span class="value empty" id="val-food-cuisine_preference">—</span></div>
+          <div class="pref-field"><span class="label">Allergies</span><span class="value empty" id="val-food-allergies">—</span></div>
+        </div>
+      </div>
+
+      <div class="progress-section">
+        <div class="progress-bar"><div id="progressFill" class="progress-fill" style="width: 0%"></div></div>
+        <div class="progress-label"><span id="progressText">0%</span> complete</div>
+        <button id="confirmBtn" class="confirm-btn" onclick="confirmPreferences()" disabled>Confirm & Search Flights</button>
+        <button class="reset-btn" onclick="resetAll()">Start Over</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { VocalBridge } from 'https://esm.sh/@vocalbridgeai/sdk@latest';
+
+    let vb = null;
+    let connected = false;
+    let micEnabled = true;
+
+    // ---- Connection ----
+    window.toggleConnection = async function() {
+      if (connected) {
+        await disconnect();
+        return;
+      }
+
+      const callBtn = document.getElementById('callBtn');
+      callBtn.disabled = true;
+      callBtn.textContent = 'Connecting...';
+      setAgentStatus('connecting', 'Connecting...');
+
+      try {
+        vb = new VocalBridge({
+          auth: { tokenUrl: '/api/voice-token' },
+          participantName: 'Traveler',
+          debug: true,
+        });
+
+        vb.on('connectionStateChanged', (state) => {
+          if (state === 'connected') {
+            connected = true;
+            callBtn.disabled = false;
+            callBtn.textContent = '📞 End Conversation';
+            callBtn.classList.add('active');
+            document.getElementById('micBtn').disabled = false;
+            setAgentStatus('online', 'Connected — listening');
+            document.getElementById('hint').textContent = 'Speak naturally — Tailwind is listening';
+          } else if (state === 'disconnected') {
+            onDisconnected();
+          }
+        });
+
+        vb.on('transcript', ({ role, text }) => {
+          addMessage(role, text);
+          if (role === 'agent') {
+            setAgentStatus('online', 'Connected — listening');
+          } else {
+            setAgentStatus('speaking', 'Processing...');
+          }
+          // Try to extract preferences from agent text
+          tryExtractFromTranscript(role, text);
+        });
+
+        vb.on('agentAction', ({ action, payload }) => {
+          handleAgentAction(action, payload);
+        });
+
+        vb.on('error', (err) => {
+          console.error('VB Error:', err);
+          addMessage('agent', `Connection issue — please try again.`);
+        });
+
+        await vb.connect();
+      } catch (err) {
+        console.error('Connection failed:', err);
+        callBtn.disabled = false;
+        callBtn.textContent = '🎙️ Start Conversation';
+        setAgentStatus('offline', `Failed — ${err.message}`);
+      }
+    };
+
+    async function disconnect() {
+      if (vb) {
+        await vb.disconnect();
+        vb = null;
+      }
+      onDisconnected();
+    }
+
+    function onDisconnected() {
+      connected = false;
+      const callBtn = document.getElementById('callBtn');
+      callBtn.disabled = false;
+      callBtn.textContent = '🎙️ Start Conversation';
+      callBtn.classList.remove('active');
+      document.getElementById('micBtn').disabled = true;
+      setAgentStatus('offline', 'Offline — press Call to connect');
+      document.getElementById('hint').textContent = 'Talk naturally — like calling a travel concierge';
+    }
+
+    // ---- Mute ----
+    window.toggleMute = async function() {
+      if (!vb) return;
+      await vb.toggleMicrophone();
+      micEnabled = !micEnabled;
+      const btn = document.getElementById('micBtn');
+      btn.textContent = micEnabled ? '🎤' : '🔇';
+      btn.classList.toggle('muted', !micEnabled);
+      btn.title = micEnabled ? 'Mute microphone' : 'Unmute microphone';
+    };
+
+    // ---- Agent status ----
+    function setAgentStatus(state, text) {
+      const dot = document.getElementById('statusDot');
+      dot.className = `status-dot ${state}`;
+      document.getElementById('statusText').textContent = text;
+    }
+
+    // ---- Chat messages ----
+    function addMessage(role, text) {
+      const chat = document.getElementById('chat');
+      // Remove typing indicator if present
+      const typing = chat.querySelector('.typing');
+      if (typing) typing.remove();
+
+      const msg = document.createElement('div');
+      msg.className = `msg ${role}`;
+      const name = role === 'agent' ? 'Tailwind' : 'You';
+      msg.innerHTML = `<div class="name">${name}</div><div>${escapeHtml(text)}</div>`;
+      chat.appendChild(msg);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function showTyping() {
+      const chat = document.getElementById('chat');
+      if (chat.querySelector('.typing')) return;
+      const el = document.createElement('div');
+      el.className = 'typing';
+      el.innerHTML = '<span></span><span></span><span></span>';
+      chat.appendChild(el);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    // ---- Handle agent actions (structured preference updates) ----
+    function handleAgentAction(action, payload) {
+      switch (action) {
+        case 'update_preference':
+          updatePreference(payload.category, payload.field, payload.value, payload.is_change);
+          break;
+        case 'recommendations_ready':
+          updateStatus('recommendations_ready');
+          document.getElementById('confirmBtn').disabled = false;
+          break;
+        case 'preferences_complete':
+          updateStatus('confirmed');
+          document.getElementById('confirmBtn').disabled = false;
+          break;
+        case 'recommendations_invalidated':
+          updateStatus('collecting');
+          break;
+        case 'clear_preferences':
+          resetAll();
+          break;
+      }
+    }
+
+    // ---- Extract preferences from transcript text (fallback if no client actions) ----
+    function tryExtractFromTranscript(role, text) {
+      if (role !== 'user') return;
+      const lower = text.toLowerCase();
+
+      // Simple extraction patterns
+      const patterns = [
+        { regex: /(?:from|departing|leaving)\s+(\w[\w\s]*?)(?:\s+to|\s*$|,)/i, cat: 'trip', field: 'origin' },
+        { regex: /(?:to|heading to|going to|destination)\s+(\w[\w\s]*?)(?:\s|$|,|\.|for)/i, cat: 'trip', field: 'destination' },
+        { regex: /(\d+)\s*(?:travelers?|people|passengers?|of us)/i, cat: 'trip', field: 'number_of_travelers', transform: v => parseInt(v) },
+        { regex: /(?:just me|solo|alone|only me)/i, cat: 'trip', field: 'number_of_travelers', value: 1 },
+        { regex: /(?:round\s*trip|return|coming back)/i, cat: 'trip', field: 'trip_type', value: 'round_trip' },
+        { regex: /(?:one\s*way)/i, cat: 'trip', field: 'trip_type', value: 'one_way' },
+        { regex: /(?:business|work|conference|meeting)/i, cat: 'trip', field: 'trip_purpose', value: 'business' },
+        { regex: /(?:vacation|leisure|holiday|pleasure)/i, cat: 'trip', field: 'trip_purpose', value: 'leisure' },
+        { regex: /(?:family|kids|children)/i, cat: 'trip', field: 'trip_purpose', value: 'family' },
+        { regex: /(?:nonstop|non-stop|direct)/i, cat: 'flight', field: 'stops', value: 'nonstop' },
+        { regex: /(?:window)\s*(?:seat)?/i, cat: 'flight', field: 'seat_type', value: 'window' },
+        { regex: /(?:aisle)\s*(?:seat)?/i, cat: 'flight', field: 'seat_type', value: 'aisle' },
+        { regex: /(?:economy|coach)/i, cat: 'flight', field: 'cabin_class', value: 'economy' },
+        { regex: /(?:business\s*class)/i, cat: 'flight', field: 'cabin_class', value: 'business' },
+        { regex: /(?:first\s*class)/i, cat: 'flight', field: 'cabin_class', value: 'first' },
+        { regex: /(?:under|less than|max|budget)\s*\$?\s*(\d+)\s*(?:dollars?|bucks?|\$)?(?:\s*(?:per|a)\s*night)?/i, cat: '_budget', field: '_budget', transform: v => parseInt(v) },
+        { regex: /vegetarian|veg\b/i, cat: 'food', field: 'diet_type', value: 'veg' },
+        { regex: /\bvegan\b/i, cat: 'food', field: 'diet_type', value: 'vegan' },
+        { regex: /non[\s-]*veg/i, cat: 'food', field: 'diet_type', value: 'non_veg' },
+        { regex: /(?:morning)\s*(?:flight)?/i, cat: 'flight', field: 'preferred_time', value: 'morning' },
+        { regex: /(?:evening|night)\s*(?:flight)?/i, cat: 'flight', field: 'preferred_time', value: 'evening' },
+        { regex: /(?:afternoon)\s*(?:flight)?/i, cat: 'flight', field: 'preferred_time', value: 'afternoon' },
+      ];
+
+      // Date extraction
+      const dateRegex = /(\d{4}-\d{2}-\d{2})|(?:(?:on\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?)/i;
+      const dateMatch = text.match(dateRegex);
+      if (dateMatch) {
+        // Simple: just note we found a date mention
+      }
+
+      for (const p of patterns) {
+        const match = lower.match(p.regex) || text.match(p.regex);
+        if (match) {
+          let value = p.value !== undefined ? p.value : (match[1] || '').trim();
+          if (p.transform) value = p.transform(value || match[1]);
+          if (p.cat === '_budget') {
+            // Guess if it's flight or hotel budget based on context
+            if (/night|hotel|room/i.test(text)) {
+              updatePreference('hotel', 'max_budget_per_night', value, false);
+            } else {
+              updatePreference('flight', 'max_budget', value, false);
+            }
+          } else if (value) {
+            updatePreference(p.cat, p.field, value, false);
+          }
+        }
+      }
+
+      // Airport code extraction
+      const airportCodes = { 'san francisco': 'SFO', 'sfo': 'SFO', 'los angeles': 'LAX', 'lax': 'LAX',
+        'new york': 'JFK', 'jfk': 'JFK', 'newark': 'EWR', 'ewr': 'EWR', 'chicago': 'ORD', 'ord': 'ORD',
+        'austin': 'AUS', 'aus': 'AUS', 'dallas': 'DFW', 'dfw': 'DFW', 'miami': 'MIA', 'mia': 'MIA',
+        'seattle': 'SEA', 'sea': 'SEA', 'boston': 'BOS', 'bos': 'BOS', 'denver': 'DEN', 'den': 'DEN',
+        'atlanta': 'ATL', 'atl': 'ATL', 'houston': 'IAH', 'iah': 'IAH', 'phoenix': 'PHX', 'phx': 'PHX',
+        'las vegas': 'LAS', 'vegas': 'LAS', 'portland': 'PDX', 'pdx': 'PDX', 'nashville': 'BNA',
+        'san diego': 'SAN', 'orlando': 'MCO', 'washington': 'DCA', 'dc': 'DCA', 'london': 'LHR',
+        'paris': 'CDG', 'tokyo': 'NRT', 'mumbai': 'BOM', 'delhi': 'DEL', 'bangalore': 'BLR',
+      };
+
+      const fromMatch = text.match(/(?:from|departing|leaving)\s+([\w\s]+?)(?:\s+to|\s*$|,|\.)/i);
+      if (fromMatch) {
+        const city = fromMatch[1].trim().toLowerCase();
+        const code = airportCodes[city] || city.toUpperCase();
+        if (code.length <= 4) updatePreference('trip', 'origin', code, false);
+      }
+      const toMatch = text.match(/(?:to|heading to|going to)\s+([\w\s]+?)(?:\s|$|,|\.|for|on|next)/i);
+      if (toMatch) {
+        const city = toMatch[1].trim().toLowerCase();
+        const code = airportCodes[city] || city.toUpperCase();
+        if (code.length <= 4) updatePreference('trip', 'destination', code, false);
+      }
+    }
+
+    // ---- Update preference in UI + backend ----
+    async function updatePreference(category, field, value, isChange) {
+      // Send to backend
+      fetch('/preferences/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, field, value }),
+      }).then(r => r.json()).then(data => {
+        if (data.ok) {
+          updateProgress(data.completion, data.status);
+        }
+      });
+
+      // Update summary card
+      const el = document.getElementById(`val-${category}-${field}`);
+      if (!el) return;
+      el.textContent = formatValue(field, value);
+      el.classList.remove('empty');
+      el.classList.add('highlight');
+      setTimeout(() => el.classList.remove('highlight'), 2000);
+
+      const card = document.getElementById(`card-${category}`);
+      card.classList.add('has-data', 'just-updated');
+      setTimeout(() => card.classList.remove('just-updated'), 1500);
+    }
+
+    function formatValue(field, value) {
+      if (value === null || value === undefined) return '—';
+      if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+      if (field === 'max_budget' || field === 'max_budget_per_night') return `$${value}`;
+      if (field === 'star_rating') return '★'.repeat(value) + '☆'.repeat(5 - value);
+      if (field === 'has_toddler' || field === 'needs_bassinet' || field === 'needs_crib') return value ? 'Yes' : 'No';
+      if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+      if (typeof value === 'string') return value.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      return String(value);
+    }
+
+    function updateProgress(completion, status) {
+      const pct = Math.round(completion * 100);
+      document.getElementById('progressFill').style.width = `${pct}%`;
+      document.getElementById('progressText').textContent = `${pct}%`;
+      updateStatus(status);
+      document.getElementById('confirmBtn').disabled = (status !== 'recommendations_ready' && status !== 'confirmed');
+    }
+
+    function updateStatus(status) {
+      const badge = document.getElementById('statusBadge');
+      badge.textContent = status.replace(/_/g, ' ');
+      badge.className = `badge ${status}`;
+    }
+
+    // ---- Confirm ----
+    window.confirmPreferences = async function() {
+      const resp = await fetch('/preferences/confirm', { method: 'POST' });
+      const data = await resp.json();
+      if (data.ok) {
+        updateStatus('confirmed');
+        document.getElementById('confirmBtn').disabled = true;
+        document.getElementById('confirmBtn').textContent = '✓ Confirmed — Ready for Booking';
+      }
+    };
+
+    // ---- Reset ----
+    window.resetAll = async function() {
+      await fetch('/preferences/reset', { method: 'POST' });
+      document.querySelectorAll('.pref-field .value').forEach(el => { el.textContent = '—'; el.className = 'value empty'; });
+      document.querySelectorAll('.pref-card').forEach(el => el.classList.remove('has-data', 'just-updated'));
+      document.getElementById('progressFill').style.width = '0%';
+      document.getElementById('progressText').textContent = '0%';
+      document.getElementById('confirmBtn').disabled = true;
+      document.getElementById('confirmBtn').textContent = 'Confirm & Search Flights';
+      updateStatus('empty');
+      // Clear chat
+      document.getElementById('chat').innerHTML = '';
+    };
+
+    // ---- Helpers ----
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ---- Load existing state ----
+    async function loadState() {
+      const resp = await fetch('/preferences');
+      const data = await resp.json();
+      for (const [category, fields] of Object.entries(data.preferences)) {
+        for (const [field, value] of Object.entries(fields)) {
+          if (value !== null) {
+            const el = document.getElementById(`val-${category}-${field}`);
+            if (el) { el.textContent = formatValue(field, value); el.classList.remove('empty'); }
+            document.getElementById(`card-${category}`)?.classList.add('has-data');
+          }
+        }
+      }
+      updateProgress(data.completion, data.status);
+    }
+    loadState();
+  </script>
+</body>
+</html>
