@@ -325,10 +325,122 @@ def search_flights(old_flight: dict) -> list[dict]:
     )
 
 
+def search_flights_v2(
+    origin: str, destination: str, departure_date: str,
+    return_date: str | None = None, cabin: str = "Economy",
+    max_results: int = 5,
+) -> list[dict]:
+    """
+    Flight search for the booking agent. Uses Flight Shop Lite when live,
+    falls back to demo data. Returns normalized flight dicts.
+    """
+    # TODO(on-site): switch to Flight Shop Lite POST /v1/offers/flightShopLite
+    # when credentials land. For now, use InstaFlights or demo.
+    results = _default_client.search_flights(origin, destination, departure_date, limit=max_results)
+    if not results:
+        results = _fake_search_results(origin, destination, departure_date)
+
+    # Filter by cabin if requested (demo data is all Economy, live might vary)
+    if cabin and cabin != "Economy":
+        filtered = [f for f in results if f.get("cabin", "Economy") == cabin]
+        results = filtered or results
+
+    return results[:max_results]
+
+
+def search_hotels(
+    location: str, check_in: str, check_out: str,
+    guests: int = 1, max_price: float | None = None,
+) -> list[dict]:
+    """
+    Hotel search for the booking agent. Demo fallback until credentials.
+    TODO(on-site): Wire to Sabre Hotel Search API.
+    """
+    if _sabre_live() and _default_client.access_token:
+        # TODO(on-site): Implement real Sabre Hotel Search
+        # body = {"radiusInMiles": 25, "checkInDate": check_in, ...}
+        # data = _default_client._post("/v1/hotel/search", body)
+        pass
+
+    # Demo hotels
+    hotels = _fake_hotel_results(location, check_in, check_out)
+    if max_price:
+        hotels = [h for h in hotels if h["price_per_night"] <= max_price] or hotels
+    return hotels
+
+
+def get_hotel_rates(
+    hotel_code: str, check_in: str, check_out: str, guests: int = 1,
+) -> list[dict]:
+    """
+    Get detailed rates for a specific hotel.
+    TODO(on-site): Wire to Sabre Hotel Rates API.
+    """
+    if _sabre_live() and _default_client.access_token:
+        # TODO(on-site): Implement real Sabre Hotel Rates
+        pass
+
+    # Demo rates
+    return [
+        {"rate_key": f"RK-{hotel_code}-STD", "room_type": "Standard King",
+         "price_per_night": 189.00, "total": 378.00, "currency": "USD",
+         "cancellation": "Free cancellation until 24h before check-in"},
+        {"rate_key": f"RK-{hotel_code}-DLX", "room_type": "Deluxe King",
+         "price_per_night": 229.00, "total": 458.00, "currency": "USD",
+         "cancellation": "Free cancellation until 48h before check-in"},
+    ]
+
+
+def check_price(item_type: str, offer_id: str) -> dict:
+    """
+    Verify current price before booking (flight or hotel).
+    TODO(on-site): Wire to Sabre Flight Check / Hotel Price Check.
+    """
+    if _sabre_live() and _default_client.access_token:
+        # TODO(on-site): Implement real price check
+        pass
+
+    return {"valid": True, "price_confirmed": True, "offer_id": offer_id, "item_type": item_type}
+
+
+def book_trip(
+    flights: list[dict], hotel: dict | None = None,
+    traveler_name: str = "DEMO TRAVELER",
+    loyalty: list[dict] | None = None,
+) -> dict:
+    """
+    Book flights + optional hotel. Returns confirmation numbers.
+    TODO(on-site): Wire to Sabre Booking Management Create Booking.
+    """
+    result = {}
+
+    # Book flights
+    if flights:
+        flight_pnr = _fake_pnr(flights[0]) if not _booking_enabled() else None
+        if _booking_enabled() and _default_client.access_token:
+            # Real booking
+            passenger = {"first_name": traveler_name.split()[0], "last_name": traveler_name.split()[-1]}
+            booking = _default_client.create_booking(flights[0], passenger)
+            flight_pnr = booking["confirmationId"]
+        else:
+            flight_pnr = _fake_pnr(flights[0])
+        result["flight_pnr"] = flight_pnr
+        result["flights_booked"] = len(flights)
+
+    # Book hotel
+    if hotel:
+        hotel_conf = f"HH-{abs(hash(hotel.get('hotel_code', 'X'))) % 99999:05d}"
+        result["hotel_confirmation"] = hotel_conf
+        result["hotel_name"] = hotel.get("name", "Hotel")
+
+    result["status"] = "CONFIRMED"
+    result["traveler"] = traveler_name
+    return result
+
+
 def book_flight(flight: dict, passenger: dict | None = None) -> dict:
     """Rebook the chosen flight. Returns {"pnr", "status", "flight"}."""
     result = _default_client.create_booking(flight, passenger)
-    # keep the old "pnr" key for main.py / the frontend
     return {"pnr": result["confirmationId"], "status": result["status"], "flight": result["flight"]}
 
 
@@ -338,18 +450,44 @@ def book_flight(flight: dict, passenger: dict | None = None) -> dict:
 def _fake_search_results(origin: str, destination: str, depart_date: str) -> list[dict]:
     o, d, date = origin, destination, depart_date
     return [
-        {"flight_number": "AA1245", "carrier_code": "AA", "carrier": "American Airlines",
-         "origin": o, "destination": d, "depart": f"{date}T20:15:00", "arrive": f"{date}T23:05:00",
-         "duration": "3h 50m", "stops": 0, "price": 214.00, "currency": "USD",
-         "cabin": "Economy", "booking_class": "Y", "seats_left": 5},
-        {"flight_number": "UA892", "carrier_code": "UA", "carrier": "United Airlines",
-         "origin": o, "destination": d, "depart": f"{date}T21:40:00", "arrive": f"{date}T23:58:00",
-         "duration": "3h 18m", "stops": 0, "price": 268.00, "currency": "USD",
+        {"flight_number": "DL1420", "carrier_code": "DL", "carrier": "Delta Air Lines",
+         "origin": o, "destination": d, "depart": f"{date}T08:15:00", "arrive": f"{date}T11:05:00",
+         "duration": "2h 50m", "stops": 0, "price": 289.00, "currency": "USD",
+         "cabin": "Economy", "booking_class": "Y", "seats_left": 8},
+        {"flight_number": "UA567", "carrier_code": "UA", "carrier": "United Airlines",
+         "origin": o, "destination": d, "depart": f"{date}T10:30:00", "arrive": f"{date}T13:45:00",
+         "duration": "3h 15m", "stops": 0, "price": 245.00, "currency": "USD",
          "cabin": "Economy", "booking_class": "Y", "seats_left": 12},
-        {"flight_number": "WN2210", "carrier_code": "WN", "carrier": "Southwest Airlines",
-         "origin": o, "destination": d, "depart": f"{date}T19:05:00", "arrive": f"{date}T23:35:00",
-         "duration": "5h 30m", "stops": 1, "price": 179.00, "currency": "USD",
+        {"flight_number": "AA1245", "carrier_code": "AA", "carrier": "American Airlines",
+         "origin": o, "destination": d, "depart": f"{date}T14:00:00", "arrive": f"{date}T17:20:00",
+         "duration": "3h 20m", "stops": 0, "price": 214.00, "currency": "USD",
+         "cabin": "Economy", "booking_class": "Y", "seats_left": 5},
+        {"flight_number": "WN882", "carrier_code": "WN", "carrier": "Southwest Airlines",
+         "origin": o, "destination": d, "depart": f"{date}T12:45:00", "arrive": f"{date}T16:15:00",
+         "duration": "3h 30m", "stops": 1, "price": 179.00, "currency": "USD",
          "cabin": "Economy", "booking_class": "Y", "seats_left": 3},
+    ]
+
+
+def _fake_hotel_results(location: str, check_in: str, check_out: str) -> list[dict]:
+    """Demo hotel results with realistic data."""
+    city = location.split(",")[0].strip() if "," in location else location
+    return [
+        {"hotel_code": "HLT-DT-001", "name": f"Hilton {city} Downtown",
+         "chain": "Hilton", "rating": 4.2, "stars": 4,
+         "address": f"200 Congress Ave, {city}",
+         "price_per_night": 199.00, "currency": "USD",
+         "amenities": ["WiFi", "Pool", "Fitness Center", "Restaurant"]},
+        {"hotel_code": "MAR-RV-002", "name": f"Marriott Riverfront {city}",
+         "chain": "Marriott", "rating": 4.4, "stars": 4,
+         "address": f"11 Red River St, {city}",
+         "price_per_night": 229.00, "currency": "USD",
+         "amenities": ["WiFi", "Pool", "Spa", "Valet Parking"]},
+        {"hotel_code": "HGI-AIR-003", "name": f"Hilton Garden Inn {city} Airport",
+         "chain": "Hilton", "rating": 3.9, "stars": 3,
+         "address": f"500 Airport Blvd, {city}",
+         "price_per_night": 149.00, "currency": "USD",
+         "amenities": ["WiFi", "Shuttle", "Breakfast Included"]},
     ]
 
 

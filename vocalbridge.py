@@ -1,36 +1,25 @@
 """
-Vocal Bridge integration.
-
-Architecture: VB runs a MANAGED voice agent (its own LLM) that holds the call
-and calls OUR tools (the /agent/* endpoints) mid-conversation. We don't script
-the dialogue — VB does. Our job here is just to (a) kick off the call and
-(b) mint browser tokens for the WebRTC transport.
+Vocal Bridge integration: trigger an outbound call + normalize inbound webhooks.
 
 Public functions:
-    trigger_call(to_number, context)          -> dict   start an OUTBOUND phone call
-    mint_browser_token(participant_name)       -> dict   token for the in-browser SDK
-    parse_webhook(payload)                     -> dict   normalized transcript event
-                                                         (optional: live transcript UI)
+    trigger_call(to_number, opening_line, context) -> dict   starts the call
+    parse_webhook(payload)                         -> dict   normalized event
 
-Setup on the Vocal Bridge side (see vb/agent-prompt.md + vb/api-tools.json):
-    vb prompt set --file vb/agent-prompt.md
-    vb config set --api-tools-file vb/api-tools.json   # point URLs at your ngrok
-    vb config set --outbound-enabled true --accept-outbound-tos --outbound-wait-for-user true
+In DEMO_MODE, trigger_call doesn't actually dial anyone — it just logs and
+returns a fake call id. To drive the demo offline, POST a fake transcript to
+/vocalbridge/webhook yourself (there's a curl example in the README/main.py).
 
-In DEMO_MODE, calls are faked (no dial, no token request). Set DEMO_MODE=false
-and fill VOCALBRIDGE_* in .env to go live; PUBLIC_BASE_URL must be your ngrok URL
-so VB can reach the tool endpoints and (optionally) the webhook.
-
-Auth note: the token endpoint uses the `X-API-Key: vb_...` header (per VB docs),
-not a Bearer token. Adjust the outbound-call endpoint/body to match the exact
-REST shape from the on-site docs (marked TODO below).
+Once you have real Vocal Bridge credentials on-site:
+  1. Set DEMO_MODE=false and fill VOCALBRIDGE_* in .env.
+  2. Make sure PUBLIC_BASE_URL points at your ngrok tunnel so Vocal Bridge can
+     reach POST {PUBLIC_BASE_URL}/vocalbridge/webhook.
+  3. Adjust the request body / webhook field names below to match their docs.
 """
 import os
 import httpx
 
 VB_API_KEY = os.getenv("VOCALBRIDGE_API_KEY", "")
 VB_BASE_URL = os.getenv("VOCALBRIDGE_BASE_URL", "https://api.vocalbridge.ai")
-VB_TOKEN_URL = os.getenv("VOCALBRIDGE_TOKEN_URL", "https://vocalbridgeai.com/api/v1/token")
 VB_AGENT_ID = os.getenv("VOCALBRIDGE_AGENT_ID", "")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8787")
 
@@ -39,27 +28,31 @@ def _demo_mode() -> bool:
     return os.getenv("DEMO_MODE", "true").lower() in ("1", "true", "yes")
 
 
-def trigger_call(to_number: str, context: dict) -> dict:
+def trigger_call(to_number: str, opening_line: str, context: dict) -> dict:
     """
-    Start an OUTBOUND phone call. VB's agent (configured with vb/agent-prompt.md
-    + api-tools.json) runs the conversation and calls our /agent/* tools — so we
-    don't pass a script here, just who to call and pass-through context.
+    Place an outbound call. `opening_line` is what the agent says first (built by
+    agent.py from Claude). `context` carries the itinerary so the webhook handler
+    can correlate the call back to this demo run.
     """
     if _demo_mode():
         print(f"[vocalbridge] DEMO_MODE: pretend-calling {to_number}")
+        print(f"[vocalbridge] agent would open with: {opening_line!r}")
         return {"call_id": "demo-call-001", "status": "dialing", "demo": True}
 
-    # TODO(on-site): confirm the outbound-call endpoint + body. Per VB docs the
-    # agent is pre-configured (prompt + tools), so a call just needs the agent id
-    # and destination number. The `vb call <number>` CLI does this under the hood.
+    # TODO(on-site): confirm endpoint + body with Vocal Bridge docs. Many voice
+    # platforms expose exactly this "voice-ify" shape: an agent id, a destination
+    # number, a first message, and a webhook URL for events/transcripts.
     body = {
         "agent_id": VB_AGENT_ID,
         "to": to_number,
-        "metadata": context,   # correlate the call back to this demo run
+        "first_message": opening_line,
+        "webhook_url": f"{PUBLIC_BASE_URL}/vocalbridge/webhook",
+        # Pass-through metadata so we can match the webhook to this run.
+        "metadata": context,
     }
     resp = httpx.post(
         f"{VB_BASE_URL}/v1/calls",
-        headers={"X-API-Key": VB_API_KEY, "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {VB_API_KEY}", "Content-Type": "application/json"},
         json=body,
         timeout=30,
     )
@@ -72,27 +65,31 @@ def trigger_call(to_number: str, context: dict) -> dict:
     }
 
 
-def mint_browser_token(participant_name: str = "Traveler") -> dict:
+def get_webrtc_token(participant_name: str = "User") -> dict:
     """
-    Mint a short-lived LiveKit token for the in-browser WebRTC transport.
-    The frontend SDK connects with this. Keeps the API key server-side.
-    Returns VB's token payload ({livekit_url, token, room_name, ...}).
-
-    Not gated by DEMO_MODE — voice works whenever a VB key is present (voice and
-    the Sabre demo are decoupled). The account key requires the X-Agent-Id header.
+    Get a WebRTC token from Vocal Bridge for in-browser voice.
+    Frontend calls POST /api/voice-token, we proxy to VB with our API key.
+    Returns: {livekit_url, token, room_name, participant_identity, expires_in, agent_mode}
     """
-    if not VB_API_KEY:
-        return {"demo": True, "livekit_url": None, "token": None,
-                "note": "No VOCALBRIDGE_API_KEY set — cannot mint a token."}
+    if _demo_mode():
+        return {
+            "livekit_url": "wss://demo.livekit.cloud",
+            "token": "demo-token-not-real",
+            "room_name": "tailwind-demo-room",
+            "participant_identity": participant_name,
+            "expires_in": 3600,
+            "agent_mode": "ai_agent",
+            "demo": True,
+        }
 
-    headers = {"X-API-Key": VB_API_KEY, "Content-Type": "application/json"}
-    if VB_AGENT_ID:
-        headers["X-Agent-Id"] = VB_AGENT_ID
     resp = httpx.post(
-        VB_TOKEN_URL,
-        headers=headers,
+        "https://vocalbridgeai.com/api/v1/token",
+        headers={
+            "X-API-Key": VB_API_KEY,
+            "Content-Type": "application/json",
+        },
         json={"participant_name": participant_name},
-        timeout=20,
+        timeout=15,
     )
     resp.raise_for_status()
     return resp.json()

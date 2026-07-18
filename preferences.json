@@ -1,0 +1,34 @@
+{
+  "traveler": {
+    "name": "Pradeep",
+    "home_airport": "SFO",
+    "passport_country": "US",
+    "tsa_precheck": true,
+    "known_traveler_number": "123456789"
+  },
+  "flight_preferences": {
+    "preferred_airlines": ["Delta", "United"],
+    "cabin_class": "Economy",
+    "seat_preference": "aisle",
+    "prefer_nonstop": true,
+    "max_stops": 1,
+    "loyalty_programs": [
+      {"airline": "Delta", "number": "DL12345678"}
+    ]
+  },
+  "hotel_preferences": {
+    "preferred_chains": ["Hilton", "Marriott"],
+    "room_type": "king",
+    "budget_per_night_usd": 250,
+    "loyalty_programs": [
+      {"chain": "Hilton", "number": "HH987654"}
+    ]
+  },
+  "general": {
+    "budget_sensitivity": "moderate",
+    "dietary_needs": ["vegetarian"],
+    "accessibility_needs": [],
+    "travel_companions": [],
+    "payment_method": "Amex ending 4242"
+  }
+}

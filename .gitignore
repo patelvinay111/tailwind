@@ -2,6 +2,8 @@
 .env
 .env.local
 *.env
+test-hack.pem
+*.pem
 !.env.example
 
 # ---- Python virtualenv ----
@@ -9,7 +11,11 @@
 venv/
 env/
 ENV/
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 30 -nodes -subj '/CN=tailwind'
+nohup uvicorn main:app --host 0.0.0.0 --port 8787 --ssl-keyfile key.pem
+   --ssl-certfile cert.pem > server.log 2>&1 & 
 
+   nohup uvicorn main:app --host 0.0.0.0 --port 8787 --ssl-keyfile key.pem --ssl-certfile cert.pem > server.log 2>&1 &
 # ---- Python caches / build artifacts ----
 __pycache__/
 *.py[cod]

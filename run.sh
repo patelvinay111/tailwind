@@ -102,4 +102,4 @@ printf "   \033[0;37mcurl -X POST %s/vocalbridge/webhook -H 'Content-Type: appli
 printf "   \033[0;37m     -d '{\"event\":\"transcript\",\"speaker\":\"user\",\"text\":\"yes book the next one\"}'\033[0m\n\n"
 
 log "Server running on $BASE  (Ctrl+C to stop)"
-exec uvicorn main:app --reload --port "$PORT"
+exec uvicorn main:app --reload --host 0.0.0.0 --port "$PORT"

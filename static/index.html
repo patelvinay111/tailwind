@@ -6,323 +6,1003 @@
   <title>Tailwind AI</title>
   <style>
     :root {
-      --bg: #0b1020; --card: #151c31; --line: #263153; --text: #e8ecf6;
-      --muted: #97a2c0; --accent: #5b8cff; --good: #35c77f; --bad: #ff6b6b;
+      --bg: #0a0e1a;
+      --bg2: #111827;
+      --card: #1a2236;
+      --card-hover: #1f2a42;
+      --line: #2a3550;
+      --text: #f0f2f8;
+      --muted: #8892a8;
+      --gold: #d4a853;
+      --gold-dim: #a67c30;
+      --accent: #5b8cff;
+      --good: #35c77f;
+      --bad: #ff6b6b;
       --warn: #ffcc66;
+      --radius: 12px;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
       background: var(--bg); color: var(--text); min-height: 100vh;
-      display: flex; flex-direction: column; align-items: center; padding: 40px 16px;
+      display: flex; flex-direction: column;
     }
-    h1 { margin: 0 0 4px; font-size: 26px; }
-    .sub { color: var(--muted); margin: 0 0 28px; }
-    button {
-      background: var(--accent); color: white; border: none; border-radius: 10px;
-      padding: 14px 22px; font-size: 16px; font-weight: 600; cursor: pointer;
-      transition: transform .05s ease, opacity .2s ease;
+
+    /* -- Header -- */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 28px; border-bottom: 1px solid var(--line);
+      background: var(--bg2);
     }
-    button:hover { opacity: .92; }
-    button:active { transform: translateY(1px); }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .link { background: none; color: var(--muted); font-weight: 400; font-size: 13px; padding: 6px; }
-    .status {
-      margin: 22px 0 4px; padding: 12px 18px; border-radius: 10px; background: var(--card);
-      border: 1px solid var(--line); min-width: 320px; text-align: center; max-width: 640px;
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo span { font-size: 22px; font-weight: 700; }
+    .logo .icon { font-size: 24px; }
+    .logo .gold { color: var(--gold); }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .header-status {
+      font-size: 13px; color: var(--muted);
+      display: flex; align-items: center; gap: 8px;
     }
-    .status .badge {
-      display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
-      padding: 3px 8px; border-radius: 999px; margin-bottom: 6px; font-weight: 700;
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .dot.active { background: var(--good); animation: pulse 2s infinite; }
+    .dot.voice { background: var(--gold); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+    .btn-reset {
+      background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+      padding: 6px 14px; font-size: 12px; color: var(--muted); cursor: pointer;
     }
-    .badge.calling, .badge.awaiting_confirmation, .badge.rebooking { background: #2a3358; color: var(--warn); }
-    .badge.done { background: #16351f; color: var(--good); }
-    .badge.error, .badge.declined { background: #3a1d22; color: var(--bad); }
-    .badge.idle { background: #232a44; color: var(--muted); }
-    .spinner {
-      display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted);
-      border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite;
-      vertical-align: middle; margin-right: 8px;
+    .btn-reset:hover { border-color: var(--gold); color: var(--text); }
+
+    /* -- Landing -- */
+    #landing {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; text-align: center; padding: 40px 20px; gap: 20px;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .cards { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 26px; }
-    .card {
-      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-      padding: 20px; width: 300px;
+    #landing h1 { font-size: 42px; font-weight: 700; line-height: 1.2; }
+    #landing h1 .gold { color: var(--gold); }
+    #landing p { color: var(--muted); font-size: 18px; max-width: 520px; }
+    .cta-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      border: none; border-radius: var(--radius); padding: 14px 28px;
+      font-size: 16px; font-weight: 600; cursor: pointer; transition: all .15s;
     }
-    .card.old { border-color: #4a2730; }
-    .card.new { border-color: #1f4a33; }
-    .card h3 { margin: 0 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-    .card .tag { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
-    .tag.cancelled { background: #3a1d22; color: var(--bad); }
-    .tag.confirmed { background: #16351f; color: var(--good); }
-    .route { font-size: 22px; font-weight: 700; margin: 14px 0 2px; }
-    .flightno { color: var(--muted); font-size: 14px; margin-bottom: 12px; }
-    .row { display: flex; justify-content: space-between; font-size: 14px; padding: 5px 0; border-top: 1px solid var(--line); }
-    .row span:first-child { color: var(--muted); }
-    .reason { margin-top: 12px; font-size: 13px; color: var(--warn); font-style: italic; }
-    .hidden { display: none; }
+    .btn-primary { background: var(--gold); color: #0a0e1a; }
+    .btn-primary:hover { background: #e0b564; transform: translateY(-1px); }
+    .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+    .btn-secondary:hover { background: var(--card-hover); }
+    .btn-sm { padding: 10px 18px; font-size: 14px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    /* -- Main app (two columns) -- */
+    #app { flex: 1; display: none; grid-template-columns: 380px 1fr; height: calc(100vh - 57px); }
+    #app.visible { display: grid; }
+
+    /* -- Left panel: voice + transcript -- */
+    .left-panel {
+      display: flex; flex-direction: column; border-right: 1px solid var(--line);
+      background: var(--bg2);
+    }
+    .voice-widget {
+      padding: 20px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 14px;
+    }
+    .mic-btn {
+      width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--line);
+      background: transparent; color: var(--muted); font-size: 22px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; transition: all .2s;
+      position: relative;
+    }
+    .mic-btn:hover { border-color: var(--gold); color: var(--gold); }
+    .mic-btn.connecting { border-color: var(--warn); color: var(--warn); animation: pulse 1s infinite; }
+    .mic-btn.active { border-color: var(--gold); background: var(--gold); color: #0a0e1a; }
+    .mic-btn.listening { border-color: var(--good); background: rgba(53,199,127,.15); color: var(--good); }
+    /* Audio ring animation when speaking */
+    .mic-btn.listening::after {
+      content: ''; position: absolute; inset: -6px; border-radius: 50%;
+      border: 2px solid var(--good); animation: ring 1.5s ease-out infinite; opacity: 0;
+    }
+    @keyframes ring { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(1.4); opacity: 0; } }
+    .voice-info { flex: 1; }
+    .voice-state { font-size: 14px; font-weight: 500; }
+    .voice-hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* Transcript */
     .transcript {
-      max-width: 640px; width: 100%; margin: 16px auto 0; background: var(--card);
-      border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
-      max-height: 260px; overflow-y: auto; text-align: left;
+      flex: 1; overflow-y: auto; padding: 16px;
+      display: flex; flex-direction: column; gap: 12px;
     }
-    .transcript .thead { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
-    .cstatus { float: right; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
-    .cstatus .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-    .cstatus.connecting { color: var(--warn); }
-    .cstatus.connecting .dot { background: var(--warn); animation: pulse 1s infinite; }
-    .cstatus.live { color: var(--good); }
-    .cstatus.live .dot { background: var(--good); animation: pulse 1.2s infinite; }
-    .cstatus.ended { color: var(--muted); }
-    .cstatus.ended .dot { background: var(--muted); }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
-    .tline { font-size: 14px; margin: 6px 0; line-height: 1.4; }
-    .tline .who { font-weight: 700; margin-right: 6px; }
-    .tline.agent .who { color: var(--accent); }
-    .tline.you .who { color: var(--good); }
-    .arrow { align-self: center; font-size: 28px; color: var(--muted); }
-    @media (max-width: 680px) { .arrow { transform: rotate(90deg); } }
+    .msg { max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+    .msg.agent { align-self: flex-start; background: var(--card); border: 1px solid var(--line); }
+    .msg.user { align-self: flex-end; background: rgba(212,168,83,.12); border: 1px solid rgba(212,168,83,.25); }
+    .msg.system { align-self: center; background: none; color: var(--muted); font-size: 12px; font-style: italic; }
+    .msg .label { font-size: 11px; font-weight: 600; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+    .msg.agent .label { color: var(--gold); }
+    .msg.user .label { color: var(--muted); }
+    .typing-indicator { display: inline-flex; gap: 4px; padding: 4px 0; }
+    .typing-indicator span { width: 6px; height: 6px; background: var(--muted); border-radius: 50%; animation: bounce .6s infinite alternate; }
+    .typing-indicator span:nth-child(2) { animation-delay: .2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce { to { transform: translateY(-4px); opacity: .4; } }
+
+    /* Text input */
+    .input-bar {
+      padding: 12px 16px; border-top: 1px solid var(--line);
+      display: flex; gap: 10px;
+    }
+    .input-bar input {
+      flex: 1; background: var(--card); border: 1px solid var(--line);
+      border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px;
+      outline: none;
+    }
+    .input-bar input:focus { border-color: var(--gold); }
+    .input-bar button {
+      background: var(--gold); color: #0a0e1a; border: none; border-radius: 8px;
+      padding: 10px 16px; font-weight: 600; cursor: pointer; font-size: 14px;
+    }
+    .input-bar button:disabled { opacity: .4; }
+
+    /* -- Right panel: options + itinerary -- */
+    .right-panel { overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 24px; }
+    .section-title {
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin-bottom: 12px;
+    }
+
+    /* Option cards */
+    .options-grid { display: flex; flex-wrap: wrap; gap: 14px; }
+    .option-card {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 16px; width: 280px; cursor: pointer; transition: all .15s;
+      position: relative;
+    }
+    .option-card:hover { border-color: var(--gold); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,.3); }
+    .option-card.selected { border-color: var(--good); background: rgba(53,199,127,.05); }
+    .option-card .badge-pref {
+      position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 700;
+      background: rgba(212,168,83,.15); color: var(--gold); padding: 2px 8px; border-radius: 4px;
+    }
+    .option-card .carrier { font-size: 12px; font-weight: 600; color: var(--gold); text-transform: uppercase; }
+    .option-card .route { font-size: 18px; font-weight: 700; margin: 6px 0; }
+    .option-card .detail { font-size: 13px; color: var(--muted); margin: 3px 0; }
+    .option-card .price { font-size: 20px; font-weight: 700; color: var(--good); margin-top: 10px; }
+    .option-card .hotel-name { font-size: 16px; font-weight: 700; margin: 6px 0; }
+    .option-card .rating { color: var(--warn); font-size: 13px; }
+    .option-card .amenities { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    /* Itinerary */
+    .itinerary-items { display: flex; flex-direction: column; gap: 10px; }
+    .itinerary-card {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 16px; display: flex; align-items: center; gap: 14px;
+    }
+    .itinerary-card .icon { font-size: 24px; }
+    .itinerary-card .info { flex: 1; }
+    .itinerary-card .title { font-weight: 600; font-size: 14px; }
+    .itinerary-card .sub { font-size: 13px; color: var(--muted); }
+    .itinerary-card .conf { font-size: 12px; color: var(--good); font-weight: 600; margin-top: 4px; }
+    .itinerary-card .price-tag { font-weight: 700; color: var(--good); }
+
+    /* Summary */
+    .summary-card {
+      background: var(--card); border: 2px solid var(--gold); border-radius: var(--radius);
+      padding: 28px; text-align: center;
+    }
+    .summary-card h3 { color: var(--gold); margin-bottom: 8px; font-size: 18px; }
+    .summary-card .total { font-size: 32px; font-weight: 700; margin: 12px 0; }
+    .summary-card .actions { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
+
+    /* Disruption cards */
+    .disruption-section { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    .disruption-card {
+      background: var(--card); border-radius: var(--radius); padding: 18px; width: 300px;
+    }
+    .disruption-card.old { border: 1px solid var(--bad); }
+    .disruption-card.new { border: 1px solid var(--good); }
+    .disruption-card h4 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .disruption-card .route { font-size: 20px; font-weight: 700; }
+    .disruption-card .row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; border-top: 1px solid var(--line); margin-top: 6px; }
+    .disruption-card .row span:first-child { color: var(--muted); }
+    .arrow-between { font-size: 28px; color: var(--muted); }
+
+    .hidden { display: none !important; }
+
+    /* Responsive */
+    @media (max-width: 820px) {
+      #app.visible { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+      .left-panel { border-right: none; border-bottom: 1px solid var(--line); }
+    }
   </style>
 </head>
 <body>
-  <h1>✈️ Tailwind AI</h1>
-  <p class="sub">Proactive flight-disruption rebooking — powered by Sabre + Vocal Bridge.</p>
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <span class="icon">✈️</span>
+      <span>Tailwind<span class="gold">AI</span></span>
+    </div>
+    <div class="header-right">
+      <div class="header-status">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Ready</span>
+      </div>
+      <button class="btn-reset hidden" id="resetBtn" onclick="resetAll()">New Trip</button>
+    </div>
+  </header>
 
-  <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-    <button id="voice" onclick="toggleVoice()">🎙️ Talk to Agent</button>
-    <button id="go" onclick="simulate()">Simulate Flight Cancellation</button>
-  </div>
+  <!-- Landing page -->
+  <section id="landing">
+    <h1>Your voice <span class="gold">travel assistant</span></h1>
+    <p>Plan and book your entire trip in one conversation. Flights, hotels, and more — just say the word.</p>
+    <div class="cta-row">
+      <button class="btn btn-primary" onclick="startPlanning()">🎙 Start Planning</button>
+      <button class="btn btn-secondary" onclick="simulateDisruption()">⚠️ Simulate Disruption</button>
+    </div>
+  </section>
 
-  <div class="status">
-    <div><span id="badge" class="badge idle">idle</span></div>
-    <div id="message"><span id="spin" class="spinner hidden"></span><span id="msg">Ready.</span></div>
-    <div id="voiceState" class="hidden" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>
-  </div>
-  <button class="link" onclick="reset()">reset demo</button>
+  <!-- Main app (hidden until started) -->
+  <main id="app">
+    <!-- Left: voice + transcript -->
+    <div class="left-panel">
+      <div class="voice-widget">
+        <button class="mic-btn" id="micBtn" onclick="toggleVoice()">🎙</button>
+        <div class="voice-info">
+          <div class="voice-state" id="voiceState">Text mode</div>
+          <div class="voice-hint" id="voiceHint">Click mic to enable voice</div>
+        </div>
+      </div>
+      <div class="transcript" id="transcript"></div>
+      <div class="input-bar">
+        <input type="text" id="userInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter' && !event.shiftKey)sendMessage()" />
+        <button id="sendBtn" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
 
-  <div id="transcript" class="transcript hidden"><div class="thead">Live transcript <span id="callStatus" class="cstatus"></span></div></div>
+    <!-- Right: options + itinerary -->
+    <div class="right-panel" id="rightPanel">
+      <!-- Flight options -->
+      <div id="flightOptionsSection" class="hidden">
+        <div class="section-title">✈️ Flight Options</div>
+        <div class="options-grid" id="flightOptions"></div>
+      </div>
 
-  <audio id="agentAudio" autoplay></audio>
+      <!-- Hotel options -->
+      <div id="hotelOptionsSection" class="hidden">
+        <div class="section-title">🏨 Hotel Options</div>
+        <div class="options-grid" id="hotelOptions"></div>
+      </div>
 
-  <div class="cards">
-    <div id="oldCard" class="card old hidden"></div>
-    <div id="arrow" class="arrow hidden">→</div>
-    <div id="newCard" class="card new hidden"></div>
-  </div>
+      <!-- Itinerary -->
+      <div id="itinerarySection" class="hidden">
+        <div class="section-title">📋 Your Itinerary</div>
+        <div class="itinerary-items" id="itinerary"></div>
+      </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+      <!-- Trip summary -->
+      <div id="summarySection" class="hidden"></div>
+
+      <!-- Booking confirmed -->
+      <div id="confirmedSection" class="hidden"></div>
+
+      <!-- Disruption mode cards -->
+      <div id="disruptionSection" class="hidden"></div>
+
+      <!-- Empty state -->
+      <div id="emptyState" style="text-align:center; padding:80px 20px; color:var(--muted);">
+        <p style="font-size:48px; margin-bottom:16px;">✈️</p>
+        <p style="font-size:16px;">Tell me where you'd like to go.<br>Flight and hotel options will appear here.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Vocal Bridge SDK (loaded from CDN, falls back gracefully if unavailable) -->
+  <script src="https://cdn.jsdelivr.net/npm/@livekit/components-core@latest/dist/index.umd.js" onerror="console.log('[VB] LiveKit CDN unavailable — voice disabled, text still works')"></script>
+
   <script>
+    // -----------------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------------
+    let mode = 'idle';       // idle | booking | disruption
     let polling = null;
-    let room = null;   // LiveKit room for the browser voice session
+    let sending = false;
 
-    // ---- Browser voice (Vocal Bridge over LiveKit / WebRTC) ----
-    let segEls = {};   // transcription segment id -> DOM node (for live updates)
+    // Voice state
+    let voiceConnected = false;
+    let voiceRoom = null;    // LiveKit room instance (VB handles the AI)
+    let voiceToken = null;
 
-    function setVoiceState(text, show = true) {
-      const el = document.getElementById('voiceState');
-      el.textContent = text;
-      el.classList.toggle('hidden', !show);
-    }
+    // Preferences (loaded on start for UI intelligence)
+    const PREFS = {
+      preferred_airlines: ['Delta', 'United'],
+      preferred_chains: ['Hilton', 'Marriott'],
+      home_airport: 'SFO',
+    };
 
-    function clearTranscript() {
-      segEls = {};
-      const t = document.getElementById('transcript');
-      t.innerHTML = '<div class="thead">Live transcript <span id="callStatus" class="cstatus"></span></div>';
-      t.classList.add('hidden');
-    }
+    // -----------------------------------------------------------------------
+    // Start flows
+    // -----------------------------------------------------------------------
+    function startPlanning() {
+      mode = 'booking';
+      document.getElementById('landing').classList.add('hidden');
+      document.getElementById('app').classList.add('visible');
+      document.getElementById('resetBtn').classList.remove('hidden');
+      document.getElementById('statusDot').classList.add('active');
+      document.getElementById('statusText').textContent = 'Connected';
 
-    // Call-status badge in the transcript header: 'connecting' | 'live' | 'ended'.
-    function setCallStatus(state) {
-      const t = document.getElementById('transcript');
-      t.classList.remove('hidden');           // show the panel as soon as a call starts
-      const el = document.getElementById('callStatus');
-      if (!el) return;
-      const map = { connecting: 'Connecting…', live: 'Live', ended: 'Call ended' };
-      const label = map[state] || '';
-      el.className = 'cstatus ' + (state || '');
-      el.innerHTML = label ? '<span class="dot"></span>' + label : '';
-    }
-
-    // Append or update a transcript line. `id` (if given) lets interim results
-    // update in place instead of duplicating.
-    function addTranscript(role, text, id) {
-      if (!text) return;
-      const t = document.getElementById('transcript');
-      t.classList.remove('hidden');
-      let el = id ? segEls[id] : null;
-      if (!el) {
-        el = document.createElement('div');
-        el.className = 'tline ' + (role === 'agent' ? 'agent' : 'you');
-        t.appendChild(el);
-        if (id) segEls[id] = el;
-      }
-      const who = role === 'agent' ? '🤖 Agent' : '🧑 You';
-      el.innerHTML = '<span class="who">' + who + '</span>' + text;
-      t.scrollTop = t.scrollHeight;
-    }
-
-    function roleFromIdentity(identity) {
-      return (identity || '').toLowerCase().includes('agent') ? 'agent' : 'you';
-    }
-
-    // Wire transcript sources on a connected room. Handles LiveKit's native
-    // transcription events and (as a fallback) custom data-channel messages,
-    // since VB may use either.
-    function wireTranscripts(LK, room) {
-      if (LK.RoomEvent.TranscriptionReceived) {
-        room.on(LK.RoomEvent.TranscriptionReceived, (segments, participant) => {
-          const role = roleFromIdentity(participant && participant.identity);
-          for (const s of segments) addTranscript(role, s.text, s.id);
-        });
-      }
-      room.on(LK.RoomEvent.DataReceived, (payload, participant) => {
-        try {
-          const msg = JSON.parse(new TextDecoder().decode(payload));
-          const text = msg.text || msg.transcript || msg.message || msg.content;
-          const role = (msg.role || msg.speaker || (participant && participant.identity) || '')
-            .toString().toLowerCase().includes('agent') ? 'agent' : 'you';
-          if (text) addTranscript(role, text, msg.id);
-        } catch (_) { /* non-JSON data — ignore */ }
+      // Check if voice is available (VB credentials set)
+      fetch('/api/voice-token', { method: 'POST' }).then(r => r.json()).then(data => {
+        if (data.demo) {
+          // No VB credentials — hide mic, text-only mode
+          document.getElementById('micBtn').classList.add('hidden');
+          document.getElementById('voiceState').textContent = 'Text mode';
+          document.getElementById('voiceHint').textContent = 'Type below to chat with Tailwind';
+        }
       });
+
+      // Start polling for UI updates (VB tool calls update backend state)
+      startUIPolling();
+
+      addTranscript('system', 'Starting your planning session...');
+      sendToAgent('hi');
     }
 
-    async function toggleVoice() {
-      if (room) { await disconnectVoice(); return; }
-      const btn = document.getElementById('voice');
-      btn.disabled = true;
-      setVoiceState('🔗 Connecting…');
-      try {
-        // Fresh run: clear any prior itinerary + transcript so it all fills in live.
-        await fetch('/reset', { method: 'POST' });
-        render({ state: 'idle', message: 'Ready.' });
-        document.getElementById('oldCard').classList.add('hidden');
-        document.getElementById('newCard').classList.add('hidden');
-        document.getElementById('arrow').classList.add('hidden');
-        clearTranscript();
-        setCallStatus('connecting');
+    function simulateDisruption() {
+      mode = 'disruption';
+      document.getElementById('landing').classList.add('hidden');
+      document.getElementById('app').classList.add('visible');
+      document.getElementById('resetBtn').classList.remove('hidden');
+      document.getElementById('statusDot').classList.add('active');
+      document.getElementById('statusText').textContent = 'Disruption mode';
 
-        const tok = await (await fetch('/voice-token', { method: 'POST' })).json();
-        if (!tok.token || !tok.livekit_url) throw new Error(tok.error || tok.note || 'no token');
+      addTranscript('system', 'Simulating flight cancellation...');
 
-        const LK = window.LivekitClient;
-        room = new LK.Room();
-        room.on(LK.RoomEvent.TrackSubscribed, (track) => {
-          if (track.kind === 'audio') track.attach(document.getElementById('agentAudio'));
+      fetch('/simulate-cancellation', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            addTranscript('agent', data.opening_line || 'Your flight has been cancelled. Calling you now...');
+            document.getElementById('voiceHint').textContent = 'Simulate response via text or curl';
+          }
         });
-        room.on(LK.RoomEvent.Disconnected, () => { room = null; resetVoiceButton(); setCallStatus('ended'); });
-        wireTranscripts(LK, room);
-
-        await room.connect(tok.livekit_url, tok.token);
-        await room.localParticipant.setMicrophoneEnabled(true);
-
-        btn.textContent = '⏹ End Call';
-        btn.disabled = false;
-        setVoiceState('🔴 Connected — the agent is on the line. Speak now.');
-        setCallStatus('live');
-        startPolling();   // cards update as the agent calls our tools
-      } catch (e) {
-        setVoiceState('⚠️ ' + (e.message || e) + ' (mic permission? try again)');
-        setCallStatus('ended');
-        btn.disabled = false;
-        try { if (room) await room.disconnect(); } catch (_) {}
-        room = null;
-      }
-    }
-
-    async function disconnectVoice() {
-      try { if (room) await room.disconnect(); } catch (e) {}
-      room = null;
-      resetVoiceButton();
-    }
-
-    function resetVoiceButton() {
-      const btn = document.getElementById('voice');
-      btn.textContent = '🎙️ Talk to Agent';
-      btn.disabled = false;
-      setVoiceState('', false);
-    }
-
-    async function simulate() {
-      document.getElementById('go').disabled = true;
-      await fetch('/simulate-cancellation', { method: 'POST' });
       startPolling();
     }
 
-    async function reset() {
-      await fetch('/reset', { method: 'POST' });
-      document.getElementById('go').disabled = false;
-      document.getElementById('oldCard').classList.add('hidden');
-      document.getElementById('newCard').classList.add('hidden');
-      document.getElementById('arrow').classList.add('hidden');
-      render({ state: 'idle', message: 'Ready.' });
-    }
+    // -----------------------------------------------------------------------
+    // Voice — Vocal Bridge WebRTC (AI Agent Integration Mode)
+    // VB handles STT/TTS. When it needs travel data, it asks US via data channel.
+    // Our browser calls localhost APIs and responds. NO public endpoint needed.
+    // -----------------------------------------------------------------------
+    async function toggleVoice() {
+      const btn = document.getElementById('micBtn');
 
-    function startPolling() {
-      if (polling) clearInterval(polling);
-      poll();
-      polling = setInterval(poll, 2000);
-    }
+      if (voiceConnected) {
+        disconnectVoice();
+        return;
+      }
 
-    async function poll() {
-      const s = await (await fetch('/status')).json();
-      render(s);
-      if (['done', 'declined', 'error'].includes(s.state) && polling) {
-        clearInterval(polling); polling = null;
-        document.getElementById('go').disabled = false;
+      btn.classList.add('connecting');
+      setVoiceUI('connecting', 'Connecting to Vocal Bridge...');
+
+      try {
+        const tokenResp = await fetch('/api/voice-token', { method: 'POST' });
+        const tokenData = await tokenResp.json();
+
+        if (tokenData.demo) {
+          // No VB credentials — fall back to browser speech + local API
+          await startBrowserSpeechRecognition();
+          return;
+        }
+
+        await connectToVocalBridge(tokenData);
+      } catch (e) {
+        console.error('[Voice] VB connection failed, using browser speech:', e);
+        await startBrowserSpeechRecognition();
       }
     }
 
-    function render(s) {
-      const badge = document.getElementById('badge');
-      badge.textContent = (s.state || 'idle').replace(/_/g, ' ');
-      badge.className = 'badge ' + (s.state || 'idle');
-
-      document.getElementById('msg').textContent = s.message || '';
-      const active = ['calling', 'awaiting_confirmation', 'rebooking'].includes(s.state);
-      document.getElementById('spin').classList.toggle('hidden', !active);
-
-      if (s.old_itinerary) {
-        document.getElementById('oldCard').classList.remove('hidden');
-        document.getElementById('oldCard').innerHTML = cardHtml(s.old_itinerary, 'old');
+    async function connectToVocalBridge(tokenData) {
+      // Try loading LiveKit SDK dynamically
+      if (typeof LivekitClient === 'undefined' && typeof Livekit === 'undefined') {
+        try {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/livekit-client@latest/dist/livekit-client.umd.js';
+          await new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        } catch (e) {
+          await startBrowserSpeechRecognition();
+          return;
+        }
       }
-      if (s.new_itinerary) {
-        document.getElementById('arrow').classList.remove('hidden');
-        document.getElementById('newCard').classList.remove('hidden');
-        document.getElementById('newCard').innerHTML = cardHtml(s.new_itinerary, 'new', s.reason);
+
+      const LK = window.LivekitClient || window.Livekit;
+      if (!LK || !LK.Room) {
+        await startBrowserSpeechRecognition();
+        return;
+      }
+
+      const room = new LK.Room();
+      await room.connect(tokenData.livekit_url, tokenData.token);
+      voiceRoom = room;
+      voiceConnected = true;
+
+      // Attach agent audio (so we hear VB speak)
+      room.on('trackSubscribed', (track) => {
+        if (track.kind === 'audio') {
+          const el = track.attach();
+          el.style.display = 'none';
+          document.body.appendChild(el);
+        }
+      });
+
+      // Enable our mic (so VB hears us)
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+      } catch (e) {
+        console.warn('[Voice] Mic access issue:', e);
+      }
+
+      // KEY: VB sends queries via data channel → we handle locally → respond
+      room.on('dataReceived', (payload) => {
+        try {
+          const msg = JSON.parse(new TextDecoder().decode(payload));
+          handleVBDataMessage(msg);
+        } catch (e) {}
+      });
+
+      startUIPolling();
+      setVoiceUI('active', 'Voice connected — speak naturally');
+      addTranscript('system', '🎙 Connected to Vocal Bridge. Just talk!');
+    }
+
+    async function handleVBDataMessage(msg) {
+      // VB sends transcripts for display
+      if (msg.type === 'transcript' || msg.event === 'transcript') {
+        const role = msg.role || msg.speaker;
+        const text = msg.text || msg.transcript || '';
+        if (text) addTranscript(role === 'user' ? 'user' : 'agent', text);
+        if (role === 'user') setMicState('listening');
+        return;
+      }
+
+      // VB AI Agent Integration: VB asks us to handle a query
+      // This is the "AI agent mode" — VB delegates thinking to us
+      if (msg.type === 'client_action' && msg.action === 'query_agent') {
+        const query = msg.payload?.query || '';
+        const turnId = msg.payload?.turn_id || '';
+
+        // Call our LOCAL backend (no public URL needed!)
+        const resp = await fetch('/conversation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: query, source: 'voice' }),
+        });
+        const data = await resp.json();
+
+        // Apply display updates locally
+        if (data.ok && data.display_updates) {
+          data.display_updates.forEach(applyDisplayUpdate);
+        }
+
+        // Send response back to VB via data channel → VB speaks it
+        if (voiceRoom && turnId) {
+          const response = JSON.stringify({
+            type: 'client_action',
+            action: 'agent_response',
+            payload: { response: data.reply || '', turn_id: turnId }
+          });
+          voiceRoom.localParticipant.publishData(
+            new TextEncoder().encode(response),
+            { reliable: true }
+          );
+        }
+        return;
+      }
+
+      // VB agent actions (UI updates pushed from VB)
+      if (msg.action && msg.payload) {
+        applyDisplayUpdate({ action: msg.action, data: msg.payload });
       }
     }
 
-    function fmt(iso) {
-      if (!iso) return '—';
-      const [d, t] = iso.split('T');
-      const [h, m] = (t || '00:00').split(':');
-      const hr = ((+h % 12) || 12), ap = (+h < 12 ? 'AM' : 'PM');
-      return `${d} · ${hr}:${m} ${ap}`;
+    function disconnectVoice() {
+      if (voiceRoom) {
+        voiceRoom.disconnect();
+        voiceRoom = null;
+      }
+      if (window._speechRecognition) {
+        window._speechRecognition.stop();
+        window._speechRecognition = null;
+      }
+      if (uiPolling) { clearInterval(uiPolling); uiPolling = null; }
+      voiceConnected = false;
+      setVoiceUI('off', 'Text mode');
+      addTranscript('system', 'Voice disconnected.');
     }
 
-    function cardHtml(f, kind, reason) {
-      const cancelled = kind === 'old';
-      const tag = cancelled
-        ? '<span class="tag cancelled">CANCELLED</span>'
-        : '<span class="tag confirmed">CONFIRMED</span>';
-      return `
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <h3>${cancelled ? 'Original flight' : 'Rebooked flight'}</h3>${tag}
+    // Poll /status for UI sync (in case tool calls update backend state)
+    let uiPolling = null;
+    function startUIPolling() {
+      if (uiPolling) return;
+      uiPolling = setInterval(async () => {
+        try {
+          const s = await (await fetch('/status')).json();
+          syncDisplay(s.display);
+        } catch (e) {}
+      }, 1500);
+    }
+
+    let lastDisplayJSON = '';
+    function syncDisplay(display) {
+      const json = JSON.stringify(display);
+      if (json === lastDisplayJSON) return;
+      lastDisplayJSON = json;
+      if (display.flight_options?.length) renderFlightOptions(display.flight_options);
+      if (display.hotel_options?.length) renderHotelOptions(display.hotel_options);
+      if (display.booking_confirmed) renderConfirmed(display.booking_confirmed);
+    }
+
+    // -----------------------------------------------------------------------
+    // Fallback: Browser Speech Recognition (works without VB credentials)
+    // -----------------------------------------------------------------------
+    async function startBrowserSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        setVoiceUI('off', 'Voice unavailable — type below');
+        document.getElementById('micBtn').classList.remove('connecting');
+        document.getElementById('voiceHint').textContent = 'Open in Chrome at localhost:8787 for voice, or just type';
+        if (!window._speechErrorShown) {
+          addTranscript('system', '⚠️ Browser speech not available. Use Chrome at localhost:8787, or type your messages below.');
+          window._speechErrorShown = true;
+        }
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      let finalTranscript = '';
+      let silenceTimer = null;
+
+      recognition.onresult = (event) => {
+        let interim = '';
+        finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+
+        // Show interim in voice state
+        if (interim) {
+          document.getElementById('voiceState').textContent = `"${interim}"`;
+          setMicState('listening');
+        }
+
+        // Send final transcript after brief pause
+        if (finalTranscript.trim()) {
+          clearTimeout(silenceTimer);
+          silenceTimer = setTimeout(() => {
+            if (finalTranscript.trim()) {
+              sendToAgent(finalTranscript.trim());
+              finalTranscript = '';
+              setMicState('active');
+              document.getElementById('voiceState').textContent = 'Listening...';
+            }
+          }, 1000);
+        }
+      };
+
+      recognition.onend = () => {
+        // Auto-restart if still connected
+        if (voiceConnected) {
+          try { recognition.start(); } catch(e) {}
+        }
+      };
+
+      recognition.onerror = (e) => {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          setVoiceUI('off', 'Mic blocked — type below');
+          voiceConnected = false;
+          if (!window._speechErrorShown) {
+            addTranscript('system', '⚠️ Microphone blocked. Allow mic in browser settings, or type below.');
+            window._speechErrorShown = true;
+          }
+        }
+        // Ignore transient errors like 'no-speech', 'aborted'
+      };
+
+      try {
+        recognition.start();
+        window._speechRecognition = recognition;
+        voiceConnected = true;
+        setVoiceUI('active', 'Listening... (browser speech)');
+        addTranscript('system', '🎙 Voice active (browser speech recognition). Speak naturally.');
+      } catch (e) {
+        setVoiceUI('off', 'Could not start voice');
+        document.getElementById('micBtn').classList.remove('connecting');
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Voice UI helpers
+    // -----------------------------------------------------------------------
+    function setVoiceUI(state, text) {
+      const btn = document.getElementById('micBtn');
+      const dot = document.getElementById('statusDot');
+      btn.classList.remove('connecting', 'active', 'listening');
+      dot.classList.remove('voice');
+
+      if (state === 'connecting') {
+        btn.classList.add('connecting');
+      } else if (state === 'active') {
+        btn.classList.add('active');
+        dot.classList.add('voice');
+      } else if (state === 'listening') {
+        btn.classList.add('listening');
+        dot.classList.add('voice');
+      }
+
+      document.getElementById('voiceState').textContent = text;
+      document.getElementById('voiceHint').textContent =
+        state === 'off' ? 'Click mic to enable voice' :
+        state === 'active' ? 'Click mic to disconnect' :
+        state === 'listening' ? 'Hearing you...' : '';
+    }
+
+    function setMicState(state) {
+      const btn = document.getElementById('micBtn');
+      btn.classList.remove('active', 'listening');
+      btn.classList.add(state);
+    }
+
+    // -----------------------------------------------------------------------
+    // Text conversation
+    // -----------------------------------------------------------------------
+    async function sendMessage() {
+      const input = document.getElementById('userInput');
+      const text = input.value.trim();
+      if (!text || sending) return;
+      input.value = '';
+      await sendToAgent(text);
+    }
+
+    async function sendToAgent(text, fromVoice = false) {
+      if (sending) return;
+      sending = true;
+      document.getElementById('sendBtn').disabled = true;
+
+      // Show user message (unless it's the initial hi)
+      if (text !== 'hi' && !fromVoice) addTranscript('user', text);
+
+      document.getElementById('statusText').textContent = 'Thinking...';
+      showTypingIndicator();
+
+      try {
+        const resp = await fetch('/conversation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, source: fromVoice ? 'voice' : 'web' }),
+        });
+        const data = await resp.json();
+        removeTypingIndicator();
+
+        if (data.ok) {
+          addTranscript('agent', data.reply);
+          if (data.display_updates) data.display_updates.forEach(applyDisplayUpdate);
+
+          // Speak the reply if voice is active (browser TTS fallback)
+          if (voiceConnected && !voiceRoom) {
+            speak(data.reply);
+          }
+        } else {
+          addTranscript('agent', 'Sorry, something went wrong. Please try again.');
+        }
+      } catch (e) {
+        removeTypingIndicator();
+        addTranscript('agent', 'Connection error. Please try again.');
+      }
+
+      sending = false;
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('statusText').textContent = voiceConnected ? 'Voice active' : 'Connected';
+    }
+
+    async function selectOption(type, index) {
+      if (sending) return;
+      // Highlight the selected card
+      const cards = document.querySelectorAll(`#${type}Options .option-card`);
+      cards.forEach((c, i) => c.classList.toggle('selected', i === index));
+
+      sending = true;
+      document.getElementById('statusText').textContent = 'Selecting...';
+      showTypingIndicator();
+
+      const resp = await fetch('/select-option', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ option_type: type, index }),
+      });
+      const data = await resp.json();
+      removeTypingIndicator();
+
+      if (data.ok) {
+        addTranscript('agent', data.reply);
+        if (data.display_updates) data.display_updates.forEach(applyDisplayUpdate);
+        if (voiceConnected && !voiceRoom) speak(data.reply);
+      }
+      sending = false;
+      document.getElementById('statusText').textContent = voiceConnected ? 'Voice active' : 'Connected';
+    }
+
+    // -----------------------------------------------------------------------
+    // Browser TTS (fallback when no Vocal Bridge)
+    // -----------------------------------------------------------------------
+    function speak(text) {
+      if (!window.speechSynthesis) return;
+      // Don't speak system/short messages
+      if (text.length < 10) return;
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.rate = 1.05;
+      utt.pitch = 1;
+      window.speechSynthesis.speak(utt);
+    }
+
+    // -----------------------------------------------------------------------
+    // Transcript UI
+    // -----------------------------------------------------------------------
+    function addTranscript(role, text) {
+      const el = document.getElementById('transcript');
+      const msg = document.createElement('div');
+      if (role === 'system') {
+        msg.className = 'msg system';
+        msg.textContent = text;
+      } else {
+        msg.className = `msg ${role}`;
+        msg.innerHTML = `<div class="label">${role === 'agent' ? '🤖 Tailwind' : '👤 You'}</div>${escapeHtml(text)}`;
+      }
+      el.appendChild(msg);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function showTypingIndicator() {
+      const el = document.getElementById('transcript');
+      const existing = document.getElementById('typingMsg');
+      if (existing) return;
+      const msg = document.createElement('div');
+      msg.className = 'msg agent';
+      msg.id = 'typingMsg';
+      msg.innerHTML = '<div class="label">🤖 Tailwind</div><div class="typing-indicator"><span></span><span></span><span></span></div>';
+      el.appendChild(msg);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function removeTypingIndicator() {
+      const el = document.getElementById('typingMsg');
+      if (el) el.remove();
+    }
+
+    // -----------------------------------------------------------------------
+    // Display updates from agent
+    // -----------------------------------------------------------------------
+    function applyDisplayUpdate(update) {
+      const { action, data } = update;
+      document.getElementById('emptyState').classList.add('hidden');
+
+      if (action === 'show_flight_options') renderFlightOptions(data.flights || []);
+      else if (action === 'show_hotel_options') renderHotelOptions(data.hotels || []);
+      else if (action === 'add_to_itinerary') addToItinerary(data);
+      else if (action === 'show_summary') renderSummary(data);
+      else if (action === 'booking_confirmed') renderConfirmed(data);
+      else if (action === 'clear_options') {
+        document.getElementById('flightOptionsSection').classList.add('hidden');
+        document.getElementById('hotelOptionsSection').classList.add('hidden');
+      }
+    }
+
+    function renderFlightOptions(flights) {
+      const section = document.getElementById('flightOptionsSection');
+      const grid = document.getElementById('flightOptions');
+      section.classList.remove('hidden');
+      grid.innerHTML = flights.map((f, i) => {
+        const isPref = PREFS.preferred_airlines.some(a => (f.carrier || '').includes(a));
+        return `
+          <div class="option-card" onclick="selectOption('flight', ${i})">
+            ${isPref ? '<div class="badge-pref">⭐ Preferred</div>' : ''}
+            <div class="carrier">${f.carrier || f.carrier_code || ''}</div>
+            <div class="route">${f.origin} → ${f.destination}</div>
+            <div class="detail">${f.flight_number} · ${f.stops === 0 ? 'Nonstop ✓' : f.stops + ' stop'}</div>
+            <div class="detail">${formatTime(f.depart)} – ${formatTime(f.arrive)} ${f.duration ? '· ' + f.duration : ''}</div>
+            <div class="detail">${f.cabin || 'Economy'}${f.seats_left ? ' · ' + f.seats_left + ' seats left' : ''}</div>
+            <div class="price">$${(f.price || 0).toFixed(0)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderHotelOptions(hotels) {
+      const section = document.getElementById('hotelOptionsSection');
+      const grid = document.getElementById('hotelOptions');
+      section.classList.remove('hidden');
+      grid.innerHTML = hotels.map((h, i) => {
+        const isPref = PREFS.preferred_chains.some(c => (h.chain || h.name || '').includes(c));
+        return `
+          <div class="option-card" onclick="selectOption('hotel', ${i})">
+            ${isPref ? '<div class="badge-pref">⭐ Preferred</div>' : ''}
+            <div class="carrier">${h.chain || ''}</div>
+            <div class="hotel-name">${h.name}</div>
+            <div class="rating">${'★'.repeat(h.stars || 4)} ${h.rating || ''}</div>
+            <div class="detail">${h.address || ''}</div>
+            <div class="amenities">${(h.amenities || []).join(' · ')}</div>
+            <div class="price">$${(h.price_per_night || 0).toFixed(0)}<span style="font-size:12px;color:var(--muted)">/night</span></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function addToItinerary(data) {
+      const section = document.getElementById('itinerarySection');
+      const container = document.getElementById('itinerary');
+      section.classList.remove('hidden');
+      const item = data.item || data;
+      const isHotel = !item.flight_number;
+      const icon = isHotel ? '🏨' : '✈️';
+      const title = isHotel
+        ? (item.name || 'Hotel')
+        : `${item.carrier || ''} ${item.flight_number} · ${item.origin} → ${item.destination}`;
+      const sub = isHotel
+        ? `${item.price_per_night ? '$' + item.price_per_night + '/night' : ''}`
+        : `${formatTime(item.depart)} – ${formatTime(item.arrive)}`;
+      const price = item.price || item.price_per_night || '';
+      container.innerHTML += `
+        <div class="itinerary-card">
+          <div class="icon">${icon}</div>
+          <div class="info">
+            <div class="title">${escapeHtml(title)}</div>
+            <div class="sub">${sub}</div>
+          </div>
+          ${price ? `<div class="price-tag">$${Number(price).toFixed(0)}</div>` : ''}
         </div>
-        <div class="route">${f.origin} → ${f.destination}</div>
-        <div class="flightno">${f.carrier || ''} ${f.flight_number || ''}</div>
-        <div class="row"><span>Departs</span><span>${fmt(f.depart)}</span></div>
-        <div class="row"><span>Arrives</span><span>${fmt(f.arrive)}</span></div>
-        <div class="row"><span>Stops</span><span>${f.stops === 0 ? 'Nonstop' : (f.stops + ' stop')}</span></div>
-        <div class="row"><span>Price</span><span>$${(f.price || 0).toFixed(2)} ${f.currency || ''}</span></div>
-        <div class="row"><span>Confirmation</span><span>${f.confirmation || '—'}</span></div>
-        ${reason ? `<div class="reason">🤖 ${reason}</div>` : ''}
       `;
     }
 
-    // Show any in-progress state on load.
-    poll();
+    function renderSummary(data) {
+      const section = document.getElementById('summarySection');
+      section.classList.remove('hidden');
+      const total = data.total || data.total_price || '';
+      section.innerHTML = `
+        <div class="summary-card">
+          <h3>✈️ Trip Summary</h3>
+          <p style="color:var(--muted)">${escapeHtml(data.description || 'Ready to book your trip!')}</p>
+          ${total ? `<div class="total">$${typeof total === 'number' ? total.toFixed(0) : total}</div>` : ''}
+          <div class="actions">
+            <button class="btn btn-primary btn-sm" onclick="sendToAgent('yes, book it all')">✓ Confirm & Book</button>
+            <button class="btn btn-secondary btn-sm" onclick="sendToAgent('no, cancel')">✕ Cancel</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderConfirmed(data) {
+      const section = document.getElementById('confirmedSection');
+      section.classList.remove('hidden');
+      document.getElementById('summarySection').classList.add('hidden');
+      section.innerHTML = `
+        <div class="summary-card" style="border-color: var(--good);">
+          <h3 style="color: var(--good);">🎉 Trip Booked!</h3>
+          <p style="color:var(--muted)">Your trip is confirmed. Have an amazing time!</p>
+          <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px; align-items:center;">
+            ${data.flight_pnr ? `<div style="font-size:14px;">✈️ Flight confirmation: <strong style="color:var(--good)">${data.flight_pnr}</strong></div>` : ''}
+            ${data.hotel_confirmation ? `<div style="font-size:14px;">🏨 Hotel confirmation: <strong style="color:var(--good)">${data.hotel_confirmation}</strong></div>` : ''}
+          </div>
+          <div class="actions" style="margin-top:24px;">
+            <button class="btn btn-secondary btn-sm" onclick="resetAll()">Start New Trip</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('statusText').textContent = 'Trip booked! 🎉';
+    }
+
+    // -----------------------------------------------------------------------
+    // Disruption mode polling
+    // -----------------------------------------------------------------------
+    function startPolling() {
+      if (polling) clearInterval(polling);
+      polling = setInterval(pollStatus, 2000);
+    }
+
+    async function pollStatus() {
+      try {
+        const s = await (await fetch('/status')).json();
+        document.getElementById('statusText').textContent = s.message || '';
+
+        if (s.old_itinerary && mode === 'disruption') renderDisruption(s);
+        if (['done', 'declined', 'error'].includes(s.state) && polling) {
+          clearInterval(polling); polling = null;
+        }
+      } catch (e) {}
+    }
+
+    function renderDisruption(s) {
+      const section = document.getElementById('disruptionSection');
+      section.classList.remove('hidden');
+      document.getElementById('emptyState').classList.add('hidden');
+
+      let html = '<div class="disruption-section">';
+      if (s.old_itinerary) html += disruptionCard(s.old_itinerary, 'old');
+      if (s.new_itinerary) {
+        html += '<div class="arrow-between">→</div>';
+        html += disruptionCard(s.new_itinerary, 'new');
+      }
+      html += '</div>';
+      if (s.reason) html += `<p style="margin-top:14px;color:var(--warn);font-size:13px;font-style:italic;">🤖 ${escapeHtml(s.reason)}</p>`;
+      section.innerHTML = html;
+    }
+
+    function disruptionCard(f, kind) {
+      const tag = kind === 'old'
+        ? '<span style="color:var(--bad);font-weight:700;font-size:11px;">CANCELLED</span>'
+        : '<span style="color:var(--good);font-weight:700;font-size:11px;">CONFIRMED</span>';
+      return `
+        <div class="disruption-card ${kind}">
+          <h4>${kind === 'old' ? 'Original Flight' : 'Rebooked Flight'} ${tag}</h4>
+          <div class="route">${f.origin} → ${f.destination}</div>
+          <div style="color:var(--muted);font-size:13px;margin:4px 0;">${f.carrier || ''} ${f.flight_number}</div>
+          <div class="row"><span>Departs</span><span>${formatDateTime(f.depart)}</span></div>
+          <div class="row"><span>Arrives</span><span>${formatDateTime(f.arrive)}</span></div>
+          <div class="row"><span>Price</span><span>$${(f.price||0).toFixed(0)}</span></div>
+          <div class="row"><span>Confirmation</span><span>${f.confirmation || '—'}</span></div>
+        </div>
+      `;
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+    function formatTime(iso) {
+      if (!iso) return '—';
+      const t = iso.split('T')[1] || '';
+      const [h, m] = t.split(':');
+      if (!h) return '—';
+      const hr = ((+h % 12) || 12), ap = +h < 12 ? 'AM' : 'PM';
+      return `${hr}:${m} ${ap}`;
+    }
+
+    function formatDateTime(iso) {
+      if (!iso) return '—';
+      const [d] = iso.split('T');
+      return `${d} ${formatTime(iso)}`;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function resetAll() {
+      if (voiceConnected) disconnectVoice();
+      await fetch('/reset', { method: 'POST' });
+      mode = 'idle';
+      if (polling) { clearInterval(polling); polling = null; }
+      document.getElementById('app').classList.remove('visible');
+      document.getElementById('landing').classList.remove('hidden');
+      document.getElementById('resetBtn').classList.add('hidden');
+      document.getElementById('statusDot').classList.remove('active', 'voice');
+      document.getElementById('statusText').textContent = 'Ready';
+      document.getElementById('transcript').innerHTML = '';
+      document.getElementById('flightOptions').innerHTML = '';
+      document.getElementById('hotelOptions').innerHTML = '';
+      document.getElementById('itinerary').innerHTML = '';
+      ['flightOptionsSection','hotelOptionsSection','itinerarySection','summarySection','confirmedSection','disruptionSection']
+        .forEach(id => document.getElementById(id).classList.add('hidden'));
+      document.getElementById('emptyState').classList.remove('hidden');
+    }
   </script>
 </body>
 </html>
