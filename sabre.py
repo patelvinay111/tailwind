@@ -59,7 +59,7 @@ def _demo_mode() -> bool:
 
 def _sabre_live() -> bool:
     """Real Sabre SEARCH calls. Decoupled from DEMO_MODE so search can be live
-    while voice/Claude stay in demo. Requires SABRE_LIVE=true (+ a token)."""
+    while voice stays in demo. Requires SABRE_LIVE=true (+ a token)."""
     return _truthy("SABRE_LIVE", "false")
 
 

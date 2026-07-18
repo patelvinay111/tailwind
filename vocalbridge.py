@@ -31,7 +31,7 @@ def _demo_mode() -> bool:
 def trigger_call(to_number: str, opening_line: str, context: dict) -> dict:
     """
     Place an outbound call. `opening_line` is what the agent says first (built by
-    agent.py from Claude). `context` carries the itinerary so the webhook handler
+    agent.py). `context` carries the itinerary so the webhook handler
     can correlate the call back to this demo run.
     """
     if _demo_mode():

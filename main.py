@@ -138,7 +138,7 @@ async def vocalbridge_webhook(request: Request):
 
 
 def _do_rebooking():
-    """Search Sabre for alternatives, let Claude pick, then book. Updates STATE."""
+    """Search Sabre for alternatives, pick the best, then book. Updates STATE."""
     try:
         old = STATE["old_itinerary"]
         _set(state="rebooking", message="Finding the next available flight…")

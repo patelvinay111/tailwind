@@ -3,8 +3,8 @@
 Proactive flight-disruption rebooking for the Voice AI Hackathon.
 
 When a flight is cancelled, the agent **calls the traveler** (Vocal Bridge), offers to
-rebook them, and on "yes" searches **Sabre** for real alternatives, lets **Claude** pick
-the best one, and books it. The web page shows the old vs. new itinerary.
+rebook them, and on "yes" searches **Sabre** for real alternatives, picks the best one,
+and books it. The web page shows the old vs. new itinerary.
 
 **Requires Python 3.13** (pinned in `.python-version`).
 
@@ -41,14 +41,11 @@ The page then fills in the rebooked flight.
 
 ## Going live (on-site)
 
-Set `DEMO_MODE=false` in `.env` and fill in credentials, then:
-
-- **Claude** — `ANTHROPIC_API_KEY`. Improves the spoken script, yes/no detection, and flight choice.
-- **Vocal Bridge** — `VOCALBRIDGE_*` + `DEMO_USER_PHONE`. Run `ngrok http 8787` and set
-  `PUBLIC_BASE_URL` so Vocal Bridge can reach `/vocalbridge/webhook`. Adjust request/webhook
-  field names in `vocalbridge.py` (search for `TODO(on-site)`).
-- **Sabre** — `SABRE_CLIENT_ID` / `SABRE_CLIENT_SECRET` (or `SABRE_ACCESS_TOKEN`), CERT env.
-  Adjust endpoint paths + response parsing in `sabre.py` (search for `TODO(on-site)`).
+- **Sabre** — set `SABRE_ACCESS_TOKEN` (Bearer) and `SABRE_LIVE=true` for real flight
+  search. Booking stays simulated unless you deliberately set `SABRE_BOOKING_ENABLED=true`.
+- **Vocal Bridge** — set `DEMO_MODE=false` + `VOCALBRIDGE_*` + `DEMO_USER_PHONE`. Run
+  `ngrok http 8787` and set `PUBLIC_BASE_URL` so Vocal Bridge can reach `/vocalbridge/webhook`.
+  Adjust request/webhook field names in `vocalbridge.py` (search for `TODO(on-site)`).
 
 Each `TODO(on-site)` marks the exact spot to reconcile with the docs handed out at the event.
 
@@ -59,12 +56,12 @@ Each `TODO(on-site)` marks the exact spot to reconcile with the docs handed out 
 | `main.py` | FastAPI app: routes, in-memory state, orchestration |
 | `vocalbridge.py` | Outbound call trigger + webhook normalization |
 | `sabre.py` | Flight search (Bargain Finder Max) + booking (Create PNR) |
-| `agent.py` | Claude: opening line, intent detection, flight selection (rule-based fallbacks) |
+| `agent.py` | Agent logic (rule-based): opening line, intent detection, flight selection |
 | `static/index.html` | The single-page UI (vanilla JS, polls `/status`) |
 
 ## Flow
 
 `POST /simulate-cancellation` → agent opener → Vocal Bridge call → traveler confirms →
-`POST /vocalbridge/webhook` → Sabre search → Claude picks → Sabre book → `GET /status` shows both cards.
+`POST /vocalbridge/webhook` → Sabre search → pick best → Sabre book → `GET /status` shows both cards.
 
 State machine: `idle → calling → awaiting_confirmation → rebooking → done` (or `declined` / `error`).

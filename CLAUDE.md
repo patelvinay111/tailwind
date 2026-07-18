@@ -13,7 +13,7 @@ Build a voice-powered AI travel agent that unifies flights, hotels, ground trans
 The app already implements a **proactive flight-disruption rebooking flow**:
 
 1. Flight gets cancelled → agent calls the traveler (Vocal Bridge outbound)
-2. Traveler says "yes" → Sabre search for alternatives → Claude picks the best one → Sabre books it
+2. Traveler says "yes" → Sabre search for alternatives → agent picks the best one → Sabre books it (simulated by default)
 3. Web UI shows old vs. new itinerary cards in real-time
 
 **State machine:** `idle → calling → awaiting_confirmation → rebooking → done` (or `declined` / `error`)
@@ -22,8 +22,8 @@ The app already implements a **proactive flight-disruption rebooking flow**:
 | File | Role |
 |------|------|
 | `main.py` | FastAPI app: routes, in-memory state, orchestration |
-| `agent.py` | Claude brain: opening line, intent detection, flight selection |
-| `sabre.py` | Sabre OAuth2 auth + flight search (BFM v4) + booking (Create PNR) |
+| `agent.py` | Agent logic (rule-based): opening line, intent detection, flight selection |
+| `sabre.py` | SabreClient: Bearer auth + flight search (InstaFlights/BFM) + booking (Create PNR) |
 | `vocalbridge.py` | Outbound call trigger + webhook normalization |
 | `static/index.html` | Single-page UI (vanilla JS, polls `/status`) |
 | `run.sh` | One-command setup (Python 3.13, venv, deps, server) |
@@ -46,7 +46,7 @@ Set `DEMO_MODE=false` in `.env` and fill in credentials. Each `TODO(on-site)` in
 ## Architecture Overview
 
 ```
-User (voice) <-> Vocal Bridge (WebRTC/outbound call) <-> Our AI Agent (Claude) <-> Sabre APIs (travel data/booking)
+User (voice) <-> Vocal Bridge (WebRTC/outbound call) <-> Our Agent (rule-based) <-> Sabre APIs (travel data/booking)
                                                               ↕
                                                      FastAPI backend (main.py)
                                                               ↕
