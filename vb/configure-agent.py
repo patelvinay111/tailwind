@@ -66,34 +66,47 @@ def main() -> int:
 
     prompt = (ROOT / "vb" / "agent-prompt.md").read_text()
 
+    def p(name, ptype, desc):
+        return {"name": name, "type": ptype, "required": False, "location": "body", "description": desc}
+
     api_tools = [
         {
             "id": "get_cancellation_context",
             "name": "get_cancellation_context",
-            "description": "Get the traveler's cancelled flight details (flight number, route, "
-                           "departure time) so the greeting is specific. Call once at the start "
-                           "of the call, before speaking.",
+            "description": "Get the traveler's cancelled flight (flight number, route, departure "
+                           "time) so the greeting is specific. Call once at the start, before speaking.",
             "method": "GET",
             "url": f"{base}/agent/context",
             "parameters": [],
         },
         {
-            "id": "rebook_next_available_flight",
-            "name": "rebook_next_available_flight",
-            "description": "Search Sabre for the next available flight on the same route and rebook "
-                           "the traveler on the best option. Call ONLY after the traveler clearly "
-                           "agrees. Returns the new flight and a confirmation code to read back.",
+            "id": "search_rebooking_options",
+            "name": "search_rebooking_options",
+            "description": "Search Sabre for alternative flights on the same route, ranked by the "
+                           "traveler's preferences. Pass any preference the traveler states; omit "
+                           "the rest (they fall back to the saved profile). Returns a spoken summary "
+                           "of the best option to read back. Call after they agree to rebook.",
             "method": "POST",
-            "url": f"{base}/agent/rebook",
-            "parameters": [],
+            "url": f"{base}/agent/search-rebooking",
+            "parameters": [
+                p("airline_preference", "string", "Preferred airline, if stated (e.g. 'Delta')."),
+                p("stops", "string", "One of: nonstop, 1_stop, any."),
+                p("preferred_time", "string", "One of: early_morning, morning, afternoon, evening, red_eye."),
+                p("cabin_class", "string", "One of: economy, premium_economy, business, first."),
+                p("max_budget", "number", "Max price in USD, if the traveler gave one."),
+            ],
         },
         {
-            "id": "decline_rebooking",
-            "name": "decline_rebooking",
-            "description": "Record that the traveler declined to rebook. Call if they say no or not now.",
+            "id": "book_selected_flight",
+            "name": "book_selected_flight",
+            "description": "Book the flight the traveler agreed to. Optionally pass flight_number to "
+                           "pick a specific option; defaults to the best match. Call ONLY after they "
+                           "clearly confirm. Returns a confirmation code to read back.",
             "method": "POST",
-            "url": f"{base}/agent/decline",
-            "parameters": [],
+            "url": f"{base}/agent/book",
+            "parameters": [
+                p("flight_number", "string", "The flight number the traveler chose, if specified."),
+            ],
         },
     ]
 

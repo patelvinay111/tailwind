@@ -42,6 +42,12 @@ app = FastAPI(title="Tailwind AI")
 # ---------------------------------------------------------------------------
 preference_store = PreferenceStore()
 
+# Preference-aware rebooking flow (cancellation call → inform → search → book).
+# Lives in rebooking.py (self-contained router) to stay merge-safe.
+import rebooking
+rebooking.set_store(preference_store)
+app.include_router(rebooking.router)
+
 # ---------------------------------------------------------------------------
 # In-memory demo state (single run; no DB by design).
 # state: idle -> calling -> awaiting_confirmation -> rebooking -> done | declined | error

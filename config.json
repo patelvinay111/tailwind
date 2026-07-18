@@ -1,0 +1,14 @@
+{
+  "_comment": "Tunable settings for the rebooking flow (rebooking.py). Edit here, not in code. The cancelled-flight SCENARIO lives separately in scenario.json.",
+
+  "default_max_budget_usd": 1000,
+  "max_options": 3,
+
+  "time_windows": {
+    "early_morning": [4, 8],
+    "morning": [8, 12],
+    "afternoon": [12, 17],
+    "evening": [17, 21],
+    "red_eye": [21, 28]
+  }
+}
