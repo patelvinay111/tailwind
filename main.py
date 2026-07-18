@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -35,6 +36,9 @@ import sabre
 import vocalbridge
 
 app = FastAPI(title="Tailwind AI")
+
+# Shared Sabre client (Bearer auth via SABRE_ACCESS_TOKEN in .env).
+sabre_client = sabre.SabreClient()
 
 # ---------------------------------------------------------------------------
 # In-memory demo state (single run; no DB by design).
@@ -50,21 +54,23 @@ STATE = {
 }
 _lock = threading.Lock()
 
-# The one hardcoded flight we "cancel". Everything after cancellation is real Sabre.
+# The one hardcoded flight we "cancel". The rebooking SEARCH after this is real
+# Sabre. Route/date chosen because Sabre CERT actually has inventory for JFK->LAX
+# (InstaFlights 404s on routes with no CERT data, e.g. SFO->AUS).
 HARDCODED_FLIGHT = {
-    "flight_number": "DL1420",
-    "carrier": "Delta Air Lines",
-    "origin": "SFO",
-    "destination": "AUS",
-    "depart": "2026-07-18T18:00:00",
-    "arrive": "2026-07-18T23:45:00",
-    "duration": "3h 45m",
+    "flight_number": "B61234",
+    "carrier": "JetBlue Airways",
+    "origin": "JFK",
+    "destination": "LAX",
+    "depart": "2026-08-15T18:00:00",
+    "arrive": "2026-08-15T21:20:00",
+    "duration": "6h 20m",
     "stops": 0,
-    "price": 232.00,
+    "price": 329.00,
     "currency": "USD",
     "cabin": "Economy",
     "status": "CANCELLED",
-    "confirmation": "Delta-JHQ4TZ",
+    "confirmation": "JB-7K2P9Q",
 }
 
 
@@ -137,7 +143,19 @@ def _do_rebooking():
         old = STATE["old_itinerary"]
         _set(state="rebooking", message="Finding the next available flight…")
 
-        candidates = sabre.search_flights(old)
+        # Real Sabre search. If it errors or the route has no CERT inventory,
+        # fall back to demo alternatives so the on-stage demo always completes.
+        try:
+            candidates = sabre.search_flights(old)
+        except Exception as e:
+            print(f"[main] Sabre search failed ({e}); using demo alternatives")
+            candidates = []
+        if not candidates:
+            print("[main] no live alternatives; using demo alternatives")
+            candidates = sabre._fake_search_results(
+                old["origin"], old["destination"], old["depart"][:10]
+            )
+
         choice = agent.pick_flight(old, candidates)
         chosen = choice["flight"]
         if not chosen:
@@ -177,6 +195,59 @@ async def reset():
 
 
 # ---------------------------------------------------------------------------
-# Static frontend (serve index.html at /)
+# 4. Sabre endpoints — hit each Sabre operation directly (for testing/debugging
+#    independently of the voice flow). Handy on-site the moment your token lands.
+# ---------------------------------------------------------------------------
+class BookRequest(BaseModel):
+    flight: dict                       # a normalized flight dict (as returned by /sabre/search)
+    passenger: dict | None = None      # {"first_name": "...", "last_name": "..."}
+
+
+@app.get("/sabre/health")
+async def sabre_health():
+    """Sanity check: is the client configured? Never returns the token itself."""
+    return {
+        "demo_mode": sabre._demo_mode(),
+        "sabre_live_search": sabre._sabre_live(),
+        "booking_enabled": sabre._booking_enabled(),   # false => bookings are simulated
+        "base_url": sabre_client.base_url,
+        "token_present": bool(sabre_client.access_token),
+        "pcc": sabre_client.pcc or None,
+    }
+
+
+@app.get("/sabre/search")
+async def sabre_search(
+    origin: str = HARDCODED_FLIGHT["origin"],
+    destination: str = HARDCODED_FLIGHT["destination"],
+    date: str = HARDCODED_FLIGHT["depart"][:10],
+    passengers: int = 1,
+    limit: int = 5,
+):
+    """
+    InstaFlights search. Browser-testable — defaults to the demo route, so
+    GET /sabre/search just works, or override:
+      /sabre/search?origin=JFK&destination=LAX&date=2026-07-18
+    """
+    try:
+        flights = sabre_client.search_flights(origin, destination, date, passengers, limit)
+        return {"ok": True, "count": len(flights), "flights": flights}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+
+
+@app.post("/sabre/book")
+async def sabre_book(req: BookRequest):
+    """Create PNR for one flight. Body: {"flight": {...}, "passenger": {...}?}."""
+    try:
+        result = sabre_client.create_booking(req.flight, req.passenger)
+        return {"ok": True, **result}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+
+
+# ---------------------------------------------------------------------------
+# Static frontend (serve index.html at /). Mounted LAST so the API routes above
+# take precedence over the catch-all static handler.
 # ---------------------------------------------------------------------------
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
