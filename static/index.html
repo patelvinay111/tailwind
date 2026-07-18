@@ -235,7 +235,7 @@
     <p>Plan and book your entire trip in one conversation. Flights, hotels, and more — just say the word.</p>
     <div class="cta-row">
       <button class="btn btn-primary" onclick="startPlanning()">🎙 Start Planning</button>
-      <button class="btn btn-secondary" onclick="simulateDisruption()">⚠️ Simulate Disruption</button>
+      <button id="simDisruptBtn" class="btn btn-secondary" onclick="simulateDisruption()" style="display:none">⚠️ Trigger Cancellation</button>
     </div>
   </section>
 
@@ -353,14 +353,23 @@
       document.getElementById('statusDot').classList.add('active');
       document.getElementById('statusText').textContent = 'Disruption mode';
 
-      addTranscript('system', 'Simulating flight cancellation...');
+      addTranscript('system', 'Triggering flight cancellation — calling the traveler...');
 
-      fetch('/simulate-cancellation', { method: 'POST' })
+      var body = {};
+      var phone = new URLSearchParams(location.search).get('phone');
+      if (phone) body.phone_number = phone;
+      fetch('/agent/cancellation-trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
         .then(r => r.json())
         .then(data => {
           if (data.ok) {
-            addTranscript('agent', data.opening_line || 'Your flight has been cancelled. Calling you now...');
-            document.getElementById('voiceHint').textContent = 'Simulate response via text or curl';
+            addTranscript('agent', 'Cancellation triggered — the traveler is being called now.');
+            document.getElementById('voiceHint').textContent = 'Answer the call';
+          } else {
+            addTranscript('system', 'Trigger failed: ' + (data.error || 'unknown'));
           }
         });
       startPolling();
@@ -1003,6 +1012,18 @@
         .forEach(id => document.getElementById(id).classList.add('hidden'));
       document.getElementById('emptyState').classList.remove('hidden');
     }
+  </script>
+
+  <script>
+    // Operator-only: the "Trigger Cancellation" button is hidden unless the URL
+    // has ?trigger (e.g. /?trigger=1) — so one person triggers the call while
+    // another presents the clean demo. Optional ?phone= overrides the number.
+    (function () {
+      if (new URLSearchParams(location.search).has('trigger')) {
+        var b = document.getElementById('simDisruptBtn');
+        if (b) b.style.display = '';
+      }
+    })();
   </script>
 </body>
 </html>
