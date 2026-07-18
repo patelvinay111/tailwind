@@ -20,10 +20,18 @@ from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:8787").rstrip("/")
 
-mcp = FastMCP("tailwind")
+# The MCP SDK's DNS-rebinding protection validates the Host header and, by
+# default, only allows localhost — so hitting it via the EC2 hostname returns
+# "Invalid Host header". Turn it off so VB (or any client) connects with JUST
+# the URL, no custom Host header. Access control here is the EC2 security group.
+mcp = FastMCP(
+    "tailwind",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
 
 
 async def _get(path: str, params: dict | None = None) -> dict:
@@ -91,13 +99,53 @@ async def get_rebooking_status() -> dict:
     return await _get("/agent/rebooking-status")
 
 
+@mcp.tool()
+async def reset_rebooking() -> dict:
+    """Reset the itinerary back to the pristine sample (confirmed, not cancelled).
+    Useful between test runs."""
+    return await _post("/agent/rebooking-reset")
+
+
 # ---------------------------------------------------------------------------
-# Preferences (shared)
+# Preferences (voice-collected trip/flight/hotel/food profile)
 # ---------------------------------------------------------------------------
 @mcp.tool()
 async def get_preferences() -> dict:
-    """Get the traveler's saved trip/flight/hotel/food preferences."""
+    """Get the traveler's saved trip/flight/hotel/food preferences and completion status."""
     return await _get("/preferences")
+
+
+@mcp.tool()
+async def update_preference(category: str, field: str, value: object) -> dict:
+    """Set one preference the traveler states. category is one of: trip, flight,
+    hotel, food. Example fields — flight: stops, max_budget, preferred_time,
+    cabin_class, airline_preference; trip: origin, destination, departure_date,
+    number_of_travelers; hotel: room_type, max_budget_per_night; food: diet_type."""
+    return await _post("/preferences/update", {"category": category, "field": field, "value": value})
+
+
+@mcp.tool()
+async def confirm_preferences() -> dict:
+    """Mark the collected preferences as confirmed by the traveler."""
+    return await _post("/preferences/confirm")
+
+
+@mcp.tool()
+async def mark_preferences_ready() -> dict:
+    """Mark preference collection complete / ready to act on."""
+    return await _post("/preferences/ready")
+
+
+@mcp.tool()
+async def invalidate_preferences(reason: str = "") -> dict:
+    """Invalidate the collected preferences (e.g. the traveler changed their mind)."""
+    return await _post("/preferences/invalidate", {"reason": reason})
+
+
+@mcp.tool()
+async def reset_preferences() -> dict:
+    """Clear all collected preferences back to empty."""
+    return await _post("/preferences/reset")
 
 
 # ASGI app for mounting into FastAPI (SSE transport at /mcp/sse).
