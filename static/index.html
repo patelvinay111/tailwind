@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tailwind AI</title>
+  <style>
+    :root {
+      --bg: #0b1020; --card: #151c31; --line: #263153; --text: #e8ecf6;
+      --muted: #97a2c0; --accent: #5b8cff; --good: #35c77f; --bad: #ff6b6b;
+      --warn: #ffcc66;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; padding: 40px 16px;
+    }
+    h1 { margin: 0 0 4px; font-size: 26px; }
+    .sub { color: var(--muted); margin: 0 0 28px; }
+    button {
+      background: var(--accent); color: white; border: none; border-radius: 10px;
+      padding: 14px 22px; font-size: 16px; font-weight: 600; cursor: pointer;
+      transition: transform .05s ease, opacity .2s ease;
+    }
+    button:hover { opacity: .92; }
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .link { background: none; color: var(--muted); font-weight: 400; font-size: 13px; padding: 6px; }
+    .status {
+      margin: 22px 0 4px; padding: 12px 18px; border-radius: 10px; background: var(--card);
+      border: 1px solid var(--line); min-width: 320px; text-align: center; max-width: 640px;
+    }
+    .status .badge {
+      display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+      padding: 3px 8px; border-radius: 999px; margin-bottom: 6px; font-weight: 700;
+    }
+    .badge.calling, .badge.awaiting_confirmation, .badge.rebooking { background: #2a3358; color: var(--warn); }
+    .badge.done { background: #16351f; color: var(--good); }
+    .badge.error, .badge.declined { background: #3a1d22; color: var(--bad); }
+    .badge.idle { background: #232a44; color: var(--muted); }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .cards { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 26px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+      padding: 20px; width: 300px;
+    }
+    .card.old { border-color: #4a2730; }
+    .card.new { border-color: #1f4a33; }
+    .card h3 { margin: 0 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .card .tag { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+    .tag.cancelled { background: #3a1d22; color: var(--bad); }
+    .tag.confirmed { background: #16351f; color: var(--good); }
+    .route { font-size: 22px; font-weight: 700; margin: 14px 0 2px; }
+    .flightno { color: var(--muted); font-size: 14px; margin-bottom: 12px; }
+    .row { display: flex; justify-content: space-between; font-size: 14px; padding: 5px 0; border-top: 1px solid var(--line); }
+    .row span:first-child { color: var(--muted); }
+    .reason { margin-top: 12px; font-size: 13px; color: var(--warn); font-style: italic; }
+    .hidden { display: none; }
+    .arrow { align-self: center; font-size: 28px; color: var(--muted); }
+    @media (max-width: 680px) { .arrow { transform: rotate(90deg); } }
+  </style>
+</head>
+<body>
+  <h1>✈️ Tailwind AI</h1>
+  <p class="sub">Proactive flight-disruption rebooking — powered by Sabre + Vocal Bridge.</p>
+
+  <button id="go" onclick="simulate()">Simulate Flight Cancellation</button>
+
+  <div class="status">
+    <div><span id="badge" class="badge idle">idle</span></div>
+    <div id="message"><span id="spin" class="spinner hidden"></span><span id="msg">Ready.</span></div>
+  </div>
+  <button class="link" onclick="reset()">reset demo</button>
+
+  <div class="cards">
+    <div id="oldCard" class="card old hidden"></div>
+    <div id="arrow" class="arrow hidden">→</div>
+    <div id="newCard" class="card new hidden"></div>
+  </div>
+
+  <script>
+    let polling = null;
+
+    async function simulate() {
+      document.getElementById('go').disabled = true;
+      await fetch('/simulate-cancellation', { method: 'POST' });
+      startPolling();
+    }
+
+    async function reset() {
+      await fetch('/reset', { method: 'POST' });
+      document.getElementById('go').disabled = false;
+      document.getElementById('oldCard').classList.add('hidden');
+      document.getElementById('newCard').classList.add('hidden');
+      document.getElementById('arrow').classList.add('hidden');
+      render({ state: 'idle', message: 'Ready.' });
+    }
+
+    function startPolling() {
+      if (polling) clearInterval(polling);
+      poll();
+      polling = setInterval(poll, 2000);
+    }
+
+    async function poll() {
+      const s = await (await fetch('/status')).json();
+      render(s);
+      if (['done', 'declined', 'error'].includes(s.state) && polling) {
+        clearInterval(polling); polling = null;
+        document.getElementById('go').disabled = false;
+      }
+    }
+
+    function render(s) {
+      const badge = document.getElementById('badge');
+      badge.textContent = (s.state || 'idle').replace(/_/g, ' ');
+      badge.className = 'badge ' + (s.state || 'idle');
+
+      document.getElementById('msg').textContent = s.message || '';
+      const active = ['calling', 'awaiting_confirmation', 'rebooking'].includes(s.state);
+      document.getElementById('spin').classList.toggle('hidden', !active);
+
+      if (s.old_itinerary) {
+        document.getElementById('oldCard').classList.remove('hidden');
+        document.getElementById('oldCard').innerHTML = cardHtml(s.old_itinerary, 'old');
+      }
+      if (s.new_itinerary) {
+        document.getElementById('arrow').classList.remove('hidden');
+        document.getElementById('newCard').classList.remove('hidden');
+        document.getElementById('newCard').innerHTML = cardHtml(s.new_itinerary, 'new', s.reason);
+      }
+    }
+
+    function fmt(iso) {
+      if (!iso) return '—';
+      const [d, t] = iso.split('T');
+      const [h, m] = (t || '00:00').split(':');
+      const hr = ((+h % 12) || 12), ap = (+h < 12 ? 'AM' : 'PM');
+      return `${d} · ${hr}:${m} ${ap}`;
+    }
+
+    function cardHtml(f, kind, reason) {
+      const cancelled = kind === 'old';
+      const tag = cancelled
+        ? '<span class="tag cancelled">CANCELLED</span>'
+        : '<span class="tag confirmed">CONFIRMED</span>';
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>${cancelled ? 'Original flight' : 'Rebooked flight'}</h3>${tag}
+        </div>
+        <div class="route">${f.origin} → ${f.destination}</div>
+        <div class="flightno">${f.carrier || ''} ${f.flight_number || ''}</div>
+        <div class="row"><span>Departs</span><span>${fmt(f.depart)}</span></div>
+        <div class="row"><span>Arrives</span><span>${fmt(f.arrive)}</span></div>
+        <div class="row"><span>Stops</span><span>${f.stops === 0 ? 'Nonstop' : (f.stops + ' stop')}</span></div>
+        <div class="row"><span>Price</span><span>$${(f.price || 0).toFixed(2)} ${f.currency || ''}</span></div>
+        <div class="row"><span>Confirmation</span><span>${f.confirmation || '—'}</span></div>
+        ${reason ? `<div class="reason">🤖 ${reason}</div>` : ''}
+      `;
+    }
+
+    // Show any in-progress state on load.
+    poll();
+  </script>
+</body>
+</html>
