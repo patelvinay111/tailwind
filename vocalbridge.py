@@ -9,6 +9,8 @@ Real API host is vocalbridgeai.com/api (api.vocalbridge.ai does NOT resolve).
 The account API key requires the X-Agent-Id header on BOTH the call and token
 requests — without it VB returns 401.
 """
+from __future__ import annotations
+
 import os
 import httpx
 

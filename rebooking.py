@@ -22,6 +22,7 @@ import json
 import os
 import pathlib
 import threading
+from typing import Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -188,8 +189,8 @@ def _friendly_time(iso: str) -> str:
 # Endpoints (VB Custom HTTP Tools)
 # ---------------------------------------------------------------------------
 class TriggerReq(BaseModel):
-    phone_number: str | None = None
-    flight: dict | None = None
+    phone_number: Optional[str] = None
+    flight: Optional[dict] = None
 
 
 @router.post("/agent/cancellation-trigger")
@@ -219,11 +220,11 @@ async def context():
 class SearchReq(BaseModel):
     # Live overrides captured from the conversation; anything omitted falls back
     # to the voice-collected preferences.
-    airline_preference: str | None = None
-    stops: str | None = None                # nonstop | 1_stop | any
-    preferred_time: str | None = None       # early_morning|morning|afternoon|evening|red_eye
-    cabin_class: str | None = None
-    max_budget: float | None = None
+    airline_preference: Optional[str] = None
+    stops: Optional[str] = None                # nonstop | 1_stop | any
+    preferred_time: Optional[str] = None       # early_morning|morning|afternoon|evening|red_eye
+    cabin_class: Optional[str] = None
+    max_budget: Optional[float] = None
 
 
 @router.post("/agent/search-rebooking")
@@ -259,7 +260,7 @@ async def search_rebooking(req: SearchReq):
 
 
 class BookReq(BaseModel):
-    flight_number: str | None = None   # which option; defaults to the top match
+    flight_number: Optional[str] = None   # which option; defaults to the top match
 
 
 @router.post("/agent/book")
