@@ -39,13 +39,10 @@ FIELD_SCHEMA: dict[str, dict[str, dict[str, Any]]] = {
         "room_type": {"type": "string", "valid": ["single", "double", "suite", "family", "connecting"], "required": False},
         "max_budget_per_night": {"type": "number", "required": False},
         "star_rating": {"type": "int", "required": False},
-        "amenities": {"type": "array", "required": False},
         "location_preference": {"type": "string", "required": False},
-        "needs_crib": {"type": "boolean", "required": False},
     },
     "food": {
         "diet_type": {"type": "string", "valid": ["veg", "non_veg", "vegan", "no_preference"], "required": False},
-        "cuisine_preference": {"type": "array", "required": False},
         "allergies": {"type": "array", "required": False},
     },
 }
