@@ -1,4 +1,4 @@
-# Hackathon: Voice AI Travel Agent
+# Hackathon: Voice AI Travel Agent — "Tailwind AI"
 
 ## Project Goal
 
@@ -8,10 +8,49 @@ Build a voice-powered AI travel agent that unifies flights, hotels, ground trans
 
 ---
 
+## Current Implementation
+
+The app already implements a **proactive flight-disruption rebooking flow**:
+
+1. Flight gets cancelled → agent calls the traveler (Vocal Bridge outbound)
+2. Traveler says "yes" → Sabre search for alternatives → Claude picks the best one → Sabre books it
+3. Web UI shows old vs. new itinerary cards in real-time
+
+**State machine:** `idle → calling → awaiting_confirmation → rebooking → done` (or `declined` / `error`)
+
+### Files
+| File | Role |
+|------|------|
+| `main.py` | FastAPI app: routes, in-memory state, orchestration |
+| `agent.py` | Claude brain: opening line, intent detection, flight selection |
+| `sabre.py` | Sabre OAuth2 auth + flight search (BFM v4) + booking (Create PNR) |
+| `vocalbridge.py` | Outbound call trigger + webhook normalization |
+| `static/index.html` | Single-page UI (vanilla JS, polls `/status`) |
+| `run.sh` | One-command setup (Python 3.13, venv, deps, server) |
+
+### Running
+```bash
+./run.sh                    # setup + start on port 8787
+# Open http://localhost:8787, click "Simulate Flight Cancellation"
+# Then simulate traveler saying yes:
+curl -X POST http://localhost:8787/vocalbridge/webhook \
+  -H 'Content-Type: application/json' \
+  -d '{"event":"transcript","speaker":"user","text":"yes book the next one"}'
+```
+
+### Going Live (on-site)
+Set `DEMO_MODE=false` in `.env` and fill in credentials. Each `TODO(on-site)` in the code marks where to reconcile with hackathon docs.
+
+---
+
 ## Architecture Overview
 
 ```
-User (voice) <-> Vocal Bridge (WebRTC) <-> Our AI Agent <-> Sabre APIs (travel data/booking)
+User (voice) <-> Vocal Bridge (WebRTC/outbound call) <-> Our AI Agent (Claude) <-> Sabre APIs (travel data/booking)
+                                                              ↕
+                                                     FastAPI backend (main.py)
+                                                              ↕
+                                                     Web UI (static/index.html)
 ```
 
 The voice agent handles natural conversation flow. When the user asks about flights, hotels, etc., our agent delegates to Sabre's travel APIs, then speaks the results back conversationally.
@@ -33,10 +72,28 @@ https://developer.sabre.com/product-collection/agentic-api/1.0
 - **Ground Transport** — car rentals and transfers
 - **Trip Management** — retrieve, modify, and cancel bookings
 
-### Authentication
-- Sabre uses OAuth2 token-based auth (client credentials flow)
-- Get credentials from the Sabre Dev Studio dashboard
-- Token endpoint issues a bearer token for API calls
+### Authentication (OAuth2 Client Credentials)
+
+**Token endpoint:** `POST {SABRE_BASE_URL}/v2/auth/token`
+
+```python
+# Already implemented in sabre.py
+creds = f"{SABRE_CLIENT_ID}:{SABRE_CLIENT_SECRET}".encode()
+basic = base64.b64encode(creds).decode()
+
+resp = httpx.post(
+    f"{SABRE_BASE_URL}/v2/auth/token",
+    headers={
+        "Authorization": f"Basic {basic}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    },
+    data={"grant_type": "client_credentials"},
+)
+token = resp.json()["access_token"]
+# Use as: Authorization: Bearer {token}
+```
+
+Alternatively, if the hackathon provides a pre-minted token, set `SABRE_ACCESS_TOKEN` directly.
 
 ### Key Patterns for AI Agents
 - APIs are designed to be called by LLM tool-use / function-calling
@@ -45,11 +102,26 @@ https://developer.sabre.com/product-collection/agentic-api/1.0
 - Each API call is self-contained with all context in the request
 
 ### Environment Variables
+```bash
+SABRE_BASE_URL=https://api.cert.platform.sabre.com   # CERT (test) environment
+SABRE_CLIENT_ID=<from hackathon>
+SABRE_CLIENT_SECRET=<from hackathon>
+SABRE_ACCESS_TOKEN=<optional: pre-minted bearer token>
+SABRE_PCC=<pseudo city code, for booking>
 ```
-SABRE_CLIENT_ID=<from Sabre Dev Studio>
-SABRE_CLIENT_SECRET=<from Sabre Dev Studio>
-SABRE_API_BASE=https://api.sabre.com
-```
+
+### Already-Implemented Endpoints (in sabre.py)
+- **Search:** `POST /v4/offers/shop` (Bargain Finder Max v4)
+- **Book:** `POST /v2/passenger/records` (Create Passenger Name Record)
+
+### New Agentic API Endpoints (documented below)
+- `POST v1/offers/flightShopLite` — lightweight cache-based search
+- `POST v1/offers/flightShop` — full multi-source search
+- `POST v1/offers/flightSearch` — inspirational/open-date search
+- `POST v1/offers/flightRefresh` — bulk itinerary validation
+- `POST v1/offers/flightCheck` — revalidate before booking
+- Booking Management API — unified Create/Get/Modify/Cancel/Fulfill/Void/Refund
+- Hotel Search/Rates/Price Check
 
 ### API Endpoints
 
@@ -794,10 +866,18 @@ vb config set --post-processing-model gemini-2.5-flash
 ```
 
 ### Environment Variables
+```bash
+VOCALBRIDGE_API_KEY=vb_<your_key>
+VOCALBRIDGE_BASE_URL=https://api.vocalbridge.ai
+VOCALBRIDGE_AGENT_ID=<from dashboard>
+DEMO_USER_PHONE=+15551234567              # E.164 format
+PUBLIC_BASE_URL=https://your.ngrok.app    # for webhook delivery
 ```
-VOCAL_BRIDGE_API_KEY=vb_<your_key>
-VOCAL_BRIDGE_API_URL=https://vocalbridgeai.com
-```
+
+### Already-Implemented (in vocalbridge.py)
+- **Outbound call:** `POST {VB_BASE_URL}/v1/calls` with `agent_id`, `to`, `first_message`, `webhook_url`
+- **Webhook parsing:** normalizes events into `{type, role, text, call_id}`
+- **Webhook types:** `transcript` (user/agent speech), `call_ended`
 
 ---
 
