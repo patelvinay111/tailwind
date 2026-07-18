@@ -1,26 +1,28 @@
 """
-Preference engine: data model, state machine, validation, and completion tracking.
+Traveler Persona — persistent preferences used across all bookings and rebookings.
 
-The voice agent extracts preferences from conversation and emits them as
-structured client_actions. This module stores, validates, and exposes them
-for the booking teammate's code.
+These are NOT trip-specific (no origin/destination/dates). They represent the
+traveler's personal style and needs that apply to every trip they take.
+
+The voice agent collects these once, saves them as a persona, and they're
+automatically applied whenever we search for flights, hotels, or restaurants.
 """
 from __future__ import annotations
 
+import json
+import os
 import time
 from threading import Lock
 from typing import Any
 
-CATEGORIES = ("trip", "flight", "hotel", "food")
+PERSONA_FILE = os.path.join(os.path.dirname(__file__), "traveler_persona.json")
+
+CATEGORIES = ("traveler", "flight", "hotel", "food")
 
 FIELD_SCHEMA: dict[str, dict[str, dict[str, Any]]] = {
-    "trip": {
-        "origin": {"type": "string", "required": True},
-        "destination": {"type": "string", "required": True},
-        "departure_date": {"type": "string", "required": True},
-        "return_date": {"type": "string", "required": False},
-        "trip_type": {"type": "string", "valid": ["one_way", "round_trip", "multi_city"], "required": False},
-        "number_of_travelers": {"type": "int", "required": True},
+    "traveler": {
+        "name": {"type": "string", "required": False},
+        "number_of_travelers": {"type": "int", "required": False},
         "has_toddler": {"type": "boolean", "required": False},
         "trip_purpose": {"type": "string", "valid": ["business", "leisure", "family", "honeymoon"], "required": False},
     },
@@ -49,12 +51,9 @@ FIELD_SCHEMA: dict[str, dict[str, dict[str, Any]]] = {
 }
 
 REQUIRED_FOR_READY = [
-    ("trip", "origin"),
-    ("trip", "destination"),
-    ("trip", "departure_date"),
-    ("trip", "return_date"),
-    ("trip", "number_of_travelers"),
-    ("trip", "trip_purpose"),
+    ("flight", "seat_type"),
+    ("flight", "cabin_class"),
+    ("food", "diet_type"),
 ]
 
 
@@ -66,7 +65,7 @@ def _empty_preferences() -> dict:
 
 
 class PreferenceStore:
-    """Thread-safe single-session preference store with state machine."""
+    """Thread-safe traveler persona store. Persists to disk as JSON."""
 
     def __init__(self):
         self._lock = Lock()
@@ -75,6 +74,28 @@ class PreferenceStore:
         self._history: list[dict] = []
         self._last_updated: float | None = None
         self._confirmed: bool = False
+        self._load_from_disk()
+
+    def _load_from_disk(self):
+        """Load saved persona if it exists."""
+        if os.path.exists(PERSONA_FILE):
+            try:
+                with open(PERSONA_FILE, "r") as f:
+                    saved = json.load(f)
+                for category in CATEGORIES:
+                    if category in saved:
+                        for field, value in saved[category].items():
+                            if field in self._preferences.get(category, {}):
+                                self._preferences[category][field] = value
+                self._status = "complete" if self._is_ready() else "collecting"
+                self._confirmed = self._is_ready()
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+    def _save_to_disk(self):
+        """Persist persona to disk."""
+        with open(PERSONA_FILE, "w") as f:
+            json.dump(self._preferences, f, indent=2)
 
     def get_all(self) -> dict:
         with self._lock:
@@ -85,6 +106,16 @@ class PreferenceStore:
                 "confirmed": self._confirmed,
                 "last_updated": self._last_updated,
                 "history": self._history[-20:],
+            }
+
+    def get_for_booking(self) -> dict:
+        """Return preferences in a format useful for booking/search APIs."""
+        with self._lock:
+            return {
+                "traveler": self._preferences["traveler"],
+                "flight_preferences": self._preferences["flight"],
+                "hotel_preferences": self._preferences["hotel"],
+                "food_preferences": self._preferences["food"],
             }
 
     def update(self, category: str, field: str, value: Any) -> dict:
@@ -109,16 +140,12 @@ class PreferenceStore:
                 "timestamp": self._last_updated,
             })
 
-            if self._confirmed and is_change:
-                self._confirmed = False
-                self._status = "invalidated"
-            elif self._status == "confirmed" and is_change:
-                self._status = "invalidated"
-            elif self._status in ("empty", "collecting", "invalidated"):
-                if self._is_ready():
-                    self._status = "recommendations_ready"
-                else:
-                    self._status = "collecting"
+            if self._is_ready():
+                self._status = "complete"
+            else:
+                self._status = "collecting"
+
+            self._save_to_disk()
 
             return {
                 "ok": True,
@@ -131,26 +158,14 @@ class PreferenceStore:
 
     def confirm(self) -> dict:
         with self._lock:
-            if not self._is_ready():
-                return {"ok": False, "error": "Missing required preferences", "status": self._status}
             self._confirmed = True
-            self._status = "confirmed"
+            self._status = "complete"
+            self._save_to_disk()
             return {
                 "ok": True,
-                "status": "confirmed",
+                "status": "complete",
                 "preferences": self._preferences.copy(),
             }
-
-    def mark_ready(self) -> dict:
-        with self._lock:
-            self._status = "recommendations_ready"
-            return {"ok": True, "status": self._status}
-
-    def invalidate(self, reason: str = "") -> dict:
-        with self._lock:
-            self._status = "invalidated"
-            self._confirmed = False
-            return {"ok": True, "status": self._status, "reason": reason}
 
     def reset(self) -> dict:
         with self._lock:
@@ -159,6 +174,8 @@ class PreferenceStore:
             self._history = []
             self._last_updated = None
             self._confirmed = False
+            if os.path.exists(PERSONA_FILE):
+                os.remove(PERSONA_FILE)
             return {"ok": True, "status": "empty"}
 
     def _is_ready(self) -> bool:

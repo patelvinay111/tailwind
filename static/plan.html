@@ -175,21 +175,17 @@
       <div class="hint" id="hint">Talk naturally — like calling a travel concierge</div>
     </div>
 
-    <!-- Right: Live Preferences -->
+    <!-- Right: Traveler Persona -->
     <div class="right">
-      <h2>Your Trip Preferences</h2>
+      <h2>Your Traveler Profile</h2>
 
-      <div class="pref-card" id="card-trip">
-        <h3>✈️ Trip</h3>
+      <div class="pref-card" id="card-traveler">
+        <h3>👤 Traveler</h3>
         <div class="pref-fields">
-          <div class="pref-field"><span class="label">From</span><span class="value empty" id="val-trip-origin">—</span></div>
-          <div class="pref-field"><span class="label">To</span><span class="value empty" id="val-trip-destination">—</span></div>
-          <div class="pref-field"><span class="label">Depart</span><span class="value empty" id="val-trip-departure_date">—</span></div>
-          <div class="pref-field"><span class="label">Return</span><span class="value empty" id="val-trip-return_date">—</span></div>
-          <div class="pref-field"><span class="label">Type</span><span class="value empty" id="val-trip-trip_type">—</span></div>
-          <div class="pref-field"><span class="label">Travelers</span><span class="value empty" id="val-trip-number_of_travelers">—</span></div>
-          <div class="pref-field"><span class="label">Toddler</span><span class="value empty" id="val-trip-has_toddler">—</span></div>
-          <div class="pref-field"><span class="label">Purpose</span><span class="value empty" id="val-trip-trip_purpose">—</span></div>
+          <div class="pref-field"><span class="label">Name</span><span class="value empty" id="val-traveler-name">—</span></div>
+          <div class="pref-field"><span class="label">Travelers</span><span class="value empty" id="val-traveler-number_of_travelers">—</span></div>
+          <div class="pref-field"><span class="label">Toddler</span><span class="value empty" id="val-traveler-has_toddler">—</span></div>
+          <div class="pref-field"><span class="label">Purpose</span><span class="value empty" id="val-traveler-trip_purpose">—</span></div>
         </div>
       </div>
 
@@ -230,8 +226,8 @@
       <div class="progress-section">
         <div class="progress-bar"><div id="progressFill" class="progress-fill" style="width: 0%"></div></div>
         <div class="progress-label"><span id="progressText">0%</span> complete</div>
-        <button id="confirmBtn" class="confirm-btn" onclick="confirmPreferences()" disabled>Confirm & Search Flights</button>
-        <button class="reset-btn" onclick="resetAll()">Start Over</button>
+        <button id="confirmBtn" class="confirm-btn" onclick="confirmPreferences()" disabled>Save My Preferences</button>
+        <button class="reset-btn" onclick="resetAll()">Reset Profile</button>
       </div>
     </div>
   </div>
