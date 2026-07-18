@@ -1,0 +1,23 @@
+[
+  {
+    "name": "get_cancellation_context",
+    "description": "Get the traveler's cancelled flight details (flight number, route, departure time) so the greeting is specific. Call this once at the start of the call, before speaking.",
+    "method": "GET",
+    "url": "https://YOUR-NGROK-SUBDOMAIN.ngrok.app/agent/context",
+    "parameters": []
+  },
+  {
+    "name": "rebook_next_available_flight",
+    "description": "Search Sabre for the next available flight on the same route and rebook the traveler on the best option. Call ONLY after the traveler clearly agrees. Returns the new flight and a confirmation code to read back.",
+    "method": "POST",
+    "url": "https://YOUR-NGROK-SUBDOMAIN.ngrok.app/agent/rebook",
+    "parameters": []
+  },
+  {
+    "name": "decline_rebooking",
+    "description": "Record that the traveler declined to rebook. Call this if they say no or not now.",
+    "method": "POST",
+    "url": "https://YOUR-NGROK-SUBDOMAIN.ngrok.app/agent/decline",
+    "parameters": []
+  }
+]

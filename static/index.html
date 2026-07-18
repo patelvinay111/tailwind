@@ -62,6 +62,25 @@
     .row span:first-child { color: var(--muted); }
     .reason { margin-top: 12px; font-size: 13px; color: var(--warn); font-style: italic; }
     .hidden { display: none; }
+    .transcript {
+      max-width: 640px; width: 100%; margin: 16px auto 0; background: var(--card);
+      border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+      max-height: 260px; overflow-y: auto; text-align: left;
+    }
+    .transcript .thead { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+    .cstatus { float: right; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+    .cstatus .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .cstatus.connecting { color: var(--warn); }
+    .cstatus.connecting .dot { background: var(--warn); animation: pulse 1s infinite; }
+    .cstatus.live { color: var(--good); }
+    .cstatus.live .dot { background: var(--good); animation: pulse 1.2s infinite; }
+    .cstatus.ended { color: var(--muted); }
+    .cstatus.ended .dot { background: var(--muted); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+    .tline { font-size: 14px; margin: 6px 0; line-height: 1.4; }
+    .tline .who { font-weight: 700; margin-right: 6px; }
+    .tline.agent .who { color: var(--accent); }
+    .tline.you .who { color: var(--good); }
     .arrow { align-self: center; font-size: 28px; color: var(--muted); }
     @media (max-width: 680px) { .arrow { transform: rotate(90deg); } }
   </style>
@@ -70,13 +89,21 @@
   <h1>✈️ Tailwind AI</h1>
   <p class="sub">Proactive flight-disruption rebooking — powered by Sabre + Vocal Bridge.</p>
 
-  <button id="go" onclick="simulate()">Simulate Flight Cancellation</button>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+    <button id="voice" onclick="toggleVoice()">🎙️ Talk to Agent</button>
+    <button id="go" onclick="simulate()">Simulate Flight Cancellation</button>
+  </div>
 
   <div class="status">
     <div><span id="badge" class="badge idle">idle</span></div>
     <div id="message"><span id="spin" class="spinner hidden"></span><span id="msg">Ready.</span></div>
+    <div id="voiceState" class="hidden" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>
   </div>
   <button class="link" onclick="reset()">reset demo</button>
+
+  <div id="transcript" class="transcript hidden"><div class="thead">Live transcript <span id="callStatus" class="cstatus"></span></div></div>
+
+  <audio id="agentAudio" autoplay></audio>
 
   <div class="cards">
     <div id="oldCard" class="card old hidden"></div>
@@ -84,8 +111,137 @@
     <div id="newCard" class="card new hidden"></div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
   <script>
     let polling = null;
+    let room = null;   // LiveKit room for the browser voice session
+
+    // ---- Browser voice (Vocal Bridge over LiveKit / WebRTC) ----
+    let segEls = {};   // transcription segment id -> DOM node (for live updates)
+
+    function setVoiceState(text, show = true) {
+      const el = document.getElementById('voiceState');
+      el.textContent = text;
+      el.classList.toggle('hidden', !show);
+    }
+
+    function clearTranscript() {
+      segEls = {};
+      const t = document.getElementById('transcript');
+      t.innerHTML = '<div class="thead">Live transcript <span id="callStatus" class="cstatus"></span></div>';
+      t.classList.add('hidden');
+    }
+
+    // Call-status badge in the transcript header: 'connecting' | 'live' | 'ended'.
+    function setCallStatus(state) {
+      const t = document.getElementById('transcript');
+      t.classList.remove('hidden');           // show the panel as soon as a call starts
+      const el = document.getElementById('callStatus');
+      if (!el) return;
+      const map = { connecting: 'Connecting…', live: 'Live', ended: 'Call ended' };
+      const label = map[state] || '';
+      el.className = 'cstatus ' + (state || '');
+      el.innerHTML = label ? '<span class="dot"></span>' + label : '';
+    }
+
+    // Append or update a transcript line. `id` (if given) lets interim results
+    // update in place instead of duplicating.
+    function addTranscript(role, text, id) {
+      if (!text) return;
+      const t = document.getElementById('transcript');
+      t.classList.remove('hidden');
+      let el = id ? segEls[id] : null;
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'tline ' + (role === 'agent' ? 'agent' : 'you');
+        t.appendChild(el);
+        if (id) segEls[id] = el;
+      }
+      const who = role === 'agent' ? '🤖 Agent' : '🧑 You';
+      el.innerHTML = '<span class="who">' + who + '</span>' + text;
+      t.scrollTop = t.scrollHeight;
+    }
+
+    function roleFromIdentity(identity) {
+      return (identity || '').toLowerCase().includes('agent') ? 'agent' : 'you';
+    }
+
+    // Wire transcript sources on a connected room. Handles LiveKit's native
+    // transcription events and (as a fallback) custom data-channel messages,
+    // since VB may use either.
+    function wireTranscripts(LK, room) {
+      if (LK.RoomEvent.TranscriptionReceived) {
+        room.on(LK.RoomEvent.TranscriptionReceived, (segments, participant) => {
+          const role = roleFromIdentity(participant && participant.identity);
+          for (const s of segments) addTranscript(role, s.text, s.id);
+        });
+      }
+      room.on(LK.RoomEvent.DataReceived, (payload, participant) => {
+        try {
+          const msg = JSON.parse(new TextDecoder().decode(payload));
+          const text = msg.text || msg.transcript || msg.message || msg.content;
+          const role = (msg.role || msg.speaker || (participant && participant.identity) || '')
+            .toString().toLowerCase().includes('agent') ? 'agent' : 'you';
+          if (text) addTranscript(role, text, msg.id);
+        } catch (_) { /* non-JSON data — ignore */ }
+      });
+    }
+
+    async function toggleVoice() {
+      if (room) { await disconnectVoice(); return; }
+      const btn = document.getElementById('voice');
+      btn.disabled = true;
+      setVoiceState('🔗 Connecting…');
+      try {
+        // Fresh run: clear any prior itinerary + transcript so it all fills in live.
+        await fetch('/reset', { method: 'POST' });
+        render({ state: 'idle', message: 'Ready.' });
+        document.getElementById('oldCard').classList.add('hidden');
+        document.getElementById('newCard').classList.add('hidden');
+        document.getElementById('arrow').classList.add('hidden');
+        clearTranscript();
+        setCallStatus('connecting');
+
+        const tok = await (await fetch('/voice-token', { method: 'POST' })).json();
+        if (!tok.token || !tok.livekit_url) throw new Error(tok.error || tok.note || 'no token');
+
+        const LK = window.LivekitClient;
+        room = new LK.Room();
+        room.on(LK.RoomEvent.TrackSubscribed, (track) => {
+          if (track.kind === 'audio') track.attach(document.getElementById('agentAudio'));
+        });
+        room.on(LK.RoomEvent.Disconnected, () => { room = null; resetVoiceButton(); setCallStatus('ended'); });
+        wireTranscripts(LK, room);
+
+        await room.connect(tok.livekit_url, tok.token);
+        await room.localParticipant.setMicrophoneEnabled(true);
+
+        btn.textContent = '⏹ End Call';
+        btn.disabled = false;
+        setVoiceState('🔴 Connected — the agent is on the line. Speak now.');
+        setCallStatus('live');
+        startPolling();   // cards update as the agent calls our tools
+      } catch (e) {
+        setVoiceState('⚠️ ' + (e.message || e) + ' (mic permission? try again)');
+        setCallStatus('ended');
+        btn.disabled = false;
+        try { if (room) await room.disconnect(); } catch (_) {}
+        room = null;
+      }
+    }
+
+    async function disconnectVoice() {
+      try { if (room) await room.disconnect(); } catch (e) {}
+      room = null;
+      resetVoiceButton();
+    }
+
+    function resetVoiceButton() {
+      const btn = document.getElementById('voice');
+      btn.textContent = '🎙️ Talk to Agent';
+      btn.disabled = false;
+      setVoiceState('', false);
+    }
 
     async function simulate() {
       document.getElementById('go').disabled = true;

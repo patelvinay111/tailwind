@@ -1,0 +1,38 @@
+# Render Blueprint — hands-off deploy of the Tailwind AI backend.
+# In Render: New > Blueprint > pick this repo. It reads this file.
+# Secrets (sync: false) are entered in the Render dashboard, NOT committed.
+services:
+  - type: web
+    name: tailwind-ai
+    runtime: python
+    # 'starter' = always-on (no cold starts) since cost isn't a concern.
+    # Switch to 'free' to save money, but it spins down after ~15 min idle
+    # (first request after idle takes ~30-60s — risky mid-demo).
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /status
+    envVars:
+      # Python version comes from .python-version (3.13).
+      # --- Non-secret config ---
+      - key: DEMO_MODE
+        value: "true"            # voice stays demo-controlled; Sabre is separate
+      - key: SABRE_LIVE
+        value: "true"            # real flight search
+      - key: SABRE_BOOKING_ENABLED
+        value: "false"           # never book for real
+      - key: SABRE_BASE_URL
+        value: https://api.cert.platform.sabre.com
+      - key: VOCALBRIDGE_BASE_URL
+        value: https://api.vocalbridge.ai
+      - key: VOCALBRIDGE_TOKEN_URL
+        value: https://vocalbridgeai.com/api/v1/token
+      # --- Secrets: set these in the Render dashboard (Environment tab) ---
+      - key: SABRE_ACCESS_TOKEN
+        sync: false
+      - key: VOCALBRIDGE_API_KEY
+        sync: false
+      - key: VOCALBRIDGE_AGENT_ID
+        sync: false
+      - key: DEMO_USER_PHONE
+        sync: false

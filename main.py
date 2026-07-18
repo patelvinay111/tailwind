@@ -93,11 +93,13 @@ async def simulate_cancellation():
         reason=None,
     )
 
+    # VB's managed agent generates its own greeting (via the prompt + the
+    # get_cancellation_context tool), so we don't pass a script — just start the
+    # call. `opener` is kept only as a fallback / for the UI.
     opener = agent.opening_line(old)
     try:
         call = vocalbridge.trigger_call(
             to_number=os.getenv("DEMO_USER_PHONE", ""),
-            opening_line=opener,
             context={"flight_number": old["flight_number"]},
         )
         _set(call_id=call.get("call_id"), state="awaiting_confirmation",
@@ -137,43 +139,66 @@ async def vocalbridge_webhook(request: Request):
     return {"ok": True, "intent": intent, "reply": interpretation["reply"]}
 
 
-def _do_rebooking():
-    """Search Sabre for alternatives, pick the best, then book. Updates STATE."""
+def perform_rebooking() -> dict:
+    """
+    Search Sabre for alternatives, pick the best, then book (simulated by
+    default). Updates STATE and returns a result dict — the same call used by
+    both the transcript path (_do_rebooking) and the VB tool (/agent/rebook):
+        {"ok": bool, "flight": {...}|None, "confirmation": str|None,
+         "spoken": "<one sentence the voice agent can read back>"}
+    """
+    # Self-seed from the hardcoded flight if the call was started by Vocal Bridge
+    # directly (not via our button), so the agent is fully end-to-end.
+    old = STATE["old_itinerary"] or dict(HARDCODED_FLIGHT)
+    if not STATE["old_itinerary"]:
+        _set(old_itinerary=old)
+
+    _set(state="rebooking", message="Finding the next available flight…")
+
+    # Real Sabre search. If it errors or the route has no CERT inventory,
+    # fall back to demo alternatives so the on-stage demo always completes.
     try:
-        old = STATE["old_itinerary"]
-        _set(state="rebooking", message="Finding the next available flight…")
-
-        # Real Sabre search. If it errors or the route has no CERT inventory,
-        # fall back to demo alternatives so the on-stage demo always completes.
-        try:
-            candidates = sabre.search_flights(old)
-        except Exception as e:
-            print(f"[main] Sabre search failed ({e}); using demo alternatives")
-            candidates = []
-        if not candidates:
-            print("[main] no live alternatives; using demo alternatives")
-            candidates = sabre._fake_search_results(
-                old["origin"], old["destination"], old["depart"][:10]
-            )
-
-        choice = agent.pick_flight(old, candidates)
-        chosen = choice["flight"]
-        if not chosen:
-            _set(state="error", message="No alternative flights available.")
-            return
-
-        _set(message=f"Rebooking {chosen['flight_number']} — {choice['reason']}")
-        booking = sabre.book_flight(chosen)
-
-        new_itin = dict(chosen)
-        new_itin["status"] = booking["status"]
-        new_itin["confirmation"] = booking["pnr"]
-        _set(
-            state="done",
-            message=f"Done! Rebooked on {chosen['flight_number']}. Confirmation {booking['pnr']}.",
-            new_itinerary=new_itin,
-            reason=choice["reason"],
+        candidates = sabre.search_flights(old)
+    except Exception as e:
+        print(f"[main] Sabre search failed ({e}); using demo alternatives")
+        candidates = []
+    if not candidates:
+        print("[main] no live alternatives; using demo alternatives")
+        candidates = sabre._fake_search_results(
+            old["origin"], old["destination"], old["depart"][:10]
         )
+
+    choice = agent.pick_flight(old, candidates)
+    chosen = choice["flight"]
+    if not chosen:
+        _set(state="error", message="No alternative flights available.")
+        return {"ok": False, "flight": None, "confirmation": None,
+                "spoken": "I'm sorry, there are no alternative flights available right now."}
+
+    _set(message=f"Rebooking {chosen['flight_number']} — {choice['reason']}")
+    booking = sabre.book_flight(chosen)
+
+    new_itin = dict(chosen)
+    new_itin["status"] = booking["status"]
+    new_itin["confirmation"] = booking["pnr"]
+    _set(
+        state="done",
+        message=f"Done! Rebooked on {chosen['flight_number']}. Confirmation {booking['pnr']}.",
+        new_itinerary=new_itin,
+        reason=choice["reason"],
+    )
+    spoken = (
+        f"You're rebooked on {chosen['carrier']} flight {chosen['flight_number']} "
+        f"from {chosen['origin']} to {chosen['destination']}, "
+        f"confirmation {booking['pnr']}."
+    )
+    return {"ok": True, "flight": new_itin, "confirmation": booking["pnr"], "spoken": spoken}
+
+
+def _do_rebooking():
+    """Thread wrapper for the transcript path — runs perform_rebooking safely."""
+    try:
+        perform_rebooking()
     except Exception as e:
         _set(state="error", message=f"Rebooking failed: {e}")
 
@@ -195,7 +220,65 @@ async def reset():
 
 
 # ---------------------------------------------------------------------------
-# 4. Sabre endpoints — hit each Sabre operation directly (for testing/debugging
+# 4. Vocal Bridge AGENT TOOLS — the endpoints VB's voice agent calls mid-call.
+#    Register these in vb/api-tools.json (pointed at your public ngrok URL).
+#    The agent calls get_cancellation_context, then rebook_next_available_flight
+#    (or decline_rebooking). Each call also advances STATE, so the web UI updates
+#    live while you're still on the phone.
+# ---------------------------------------------------------------------------
+@app.get("/agent/context")
+async def agent_context():
+    """Tool: get_cancellation_context — what the agent needs to greet specifically.
+    Also seeds STATE so the web UI shows the cancelled-flight card even when the
+    call is started from Vocal Bridge rather than our button."""
+    old = STATE["old_itinerary"]
+    if not old:
+        old = dict(HARDCODED_FLIGHT)
+        _set(state="awaiting_confirmation", old_itinerary=old, new_itinerary=None,
+             reason=None, message="On the call — waiting for you to confirm the rebooking.")
+    return {
+        "flight_number": old["flight_number"],
+        "carrier": old["carrier"],
+        "origin": old["origin"],
+        "destination": old["destination"],
+        "depart": old["depart"],
+        "spoken": (
+            f"Your {old['carrier']} flight {old['flight_number']} from {old['origin']} "
+            f"to {old['destination']} was cancelled."
+        ),
+    }
+
+
+@app.post("/agent/rebook")
+async def agent_rebook():
+    """Tool: rebook_next_available_flight — search + pick + book. Returns a spoken summary."""
+    result = perform_rebooking()
+    return result
+
+
+@app.post("/agent/decline")
+async def agent_decline():
+    """Tool: decline_rebooking — traveler said no."""
+    _set(state="declined", message="Traveler declined the rebooking.")
+    return {"ok": True, "spoken": "No problem, I won't make any changes."}
+
+
+# ---------------------------------------------------------------------------
+# 5. Browser WebRTC transport (fallback / alt to the phone call).
+#    The frontend uses the Vocal Bridge JS SDK, which needs a short-lived token.
+#    Never expose the API key client-side — this proxies the token request.
+# ---------------------------------------------------------------------------
+@app.post("/voice-token")
+async def voice_token():
+    try:
+        token = vocalbridge.mint_browser_token(participant_name="Traveler")
+        return token
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+
+
+# ---------------------------------------------------------------------------
+# 6. Sabre endpoints — hit each Sabre operation directly (for testing/debugging
 #    independently of the voice flow). Handy on-site the moment your token lands.
 # ---------------------------------------------------------------------------
 class BookRequest(BaseModel):
